@@ -17,6 +17,8 @@ const GIF_DATA_URI_PREFIX = "data:image/gif;base64,";
 const SVG_DATA_URI_PREFIX = "data:image/svg+xml;base64,";
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB decoded
 const PNG_MAGIC_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const MAX_WEBHOOK_POLICY_EXTENSION_URL_LENGTH = 2000;
+const MAX_WEBHOOK_POLICY_EXTENSION_SIGNING_SECRET_LENGTH = 4096;
 // "GIF87a" or "GIF89a"
 const GIF87A_MAGIC_BYTES = [0x47, 0x49, 0x46, 0x38, 0x37, 0x61];
 const GIF89A_MAGIC_BYTES = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61];
@@ -223,6 +225,14 @@ const ChatLinkUrlSchema = z
     message: "Chat link URL must be a valid HTTP or HTTPS URL",
   });
 
+const WebhookPolicyExtensionEndpointUrlSchema = z
+  .string()
+  .trim()
+  .max(MAX_WEBHOOK_POLICY_EXTENSION_URL_LENGTH)
+  .refine((value) => isValidHttpUrl(value), {
+    message: "Webhook URL must be a valid HTTP or HTTPS URL",
+  });
+
 export const OrganizationChatLinkSchema = z.object({
   label: z.string().trim().min(1).max(25),
   url: ChatLinkUrlSchema,
@@ -289,6 +299,9 @@ const extendedFields = {
   customFont: OrganizationCustomFontSchema,
   compressionScope: OrganizationCompressionScopeSchema,
   globalToolPolicy: GlobalToolPolicySchema,
+  webhookPolicyExtensionEndpointUrl: z.string().nullable(),
+  webhookPolicyExtensionSigningSecretId: z.string().uuid().nullable(),
+  webhookPolicyExtensionTimeoutMs: z.number().int().min(250).max(10_000),
   embeddingModel: z.string().nullable(),
   embeddingDimensions: EmbeddingDimensionsSchema.nullable(),
   defaultLlmModel: z.string().nullable(),
@@ -347,6 +360,21 @@ export const UpdateAppearanceSettingsSchema = z.object({
 export const UpdateSecuritySettingsSchema = z.object({
   globalToolPolicy: GlobalToolPolicySchema.optional(),
   allowChatFileUploads: z.boolean().optional(),
+  webhookPolicyExtensionEndpointUrl:
+    WebhookPolicyExtensionEndpointUrlSchema.nullable().optional(),
+  webhookPolicyExtensionSigningSecret: z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_WEBHOOK_POLICY_EXTENSION_SIGNING_SECRET_LENGTH)
+    .nullable()
+    .optional(),
+  webhookPolicyExtensionTimeoutMs: z
+    .number()
+    .int()
+    .min(250)
+    .max(10_000)
+    .optional(),
 });
 
 export const UpdateLlmSettingsSchema = z.object({

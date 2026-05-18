@@ -26,11 +26,13 @@ import {
   UserModel,
   UserTokenModel,
 } from "@/models";
+import { secretManager } from "@/secrets-manager";
 import {
   ApiError,
   AppearanceSettingsSchema,
   CompleteOnboardingSchema,
   constructResponseSchema,
+  type Organization,
   SelectOrganizationSchema,
   UpdateAgentSettingsSchema,
   UpdateAppearanceSettingsSchema,
@@ -124,7 +126,45 @@ const organizationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async ({ organizationId, body }, reply) => {
-      const organization = await OrganizationModel.patch(organizationId, body);
+      const currentOrganization =
+        await OrganizationModel.getById(organizationId);
+      if (!currentOrganization) {
+        throw new ApiError(404, "Organization not found");
+      }
+
+      const { webhookPolicyExtensionSigningSecret, ...securitySettings } = body;
+      const patch: Partial<Organization> = { ...securitySettings };
+
+      if (webhookPolicyExtensionSigningSecret !== undefined) {
+        if (webhookPolicyExtensionSigningSecret === null) {
+          if (currentOrganization.webhookPolicyExtensionSigningSecretId) {
+            await secretManager().deleteSecret(
+              currentOrganization.webhookPolicyExtensionSigningSecretId,
+            );
+          }
+          patch.webhookPolicyExtensionSigningSecretId = null;
+        } else if (currentOrganization.webhookPolicyExtensionSigningSecretId) {
+          const updatedSecret = await secretManager().updateSecret(
+            currentOrganization.webhookPolicyExtensionSigningSecretId,
+            { signingSecret: webhookPolicyExtensionSigningSecret },
+          );
+          if (!updatedSecret) {
+            const secret = await secretManager().createSecret(
+              { signingSecret: webhookPolicyExtensionSigningSecret },
+              "webhook-policy-extension-signing-secret",
+            );
+            patch.webhookPolicyExtensionSigningSecretId = secret.id;
+          }
+        } else {
+          const secret = await secretManager().createSecret(
+            { signingSecret: webhookPolicyExtensionSigningSecret },
+            "webhook-policy-extension-signing-secret",
+          );
+          patch.webhookPolicyExtensionSigningSecretId = secret.id;
+        }
+      }
+
+      const organization = await OrganizationModel.patch(organizationId, patch);
 
       if (!organization) {
         throw new ApiError(404, "Organization not found");

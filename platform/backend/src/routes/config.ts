@@ -68,6 +68,7 @@ const configRoutes: FastifyPluginAsyncZod = async (fastify) => {
               bedrockIamAuthEnabled: z.boolean(),
               geminiVertexAiEnabled: z.boolean(),
               globalToolPolicy: z.enum(["permissive", "restrictive"]),
+              webhookPolicyExtensionConfigured: z.boolean(),
               incomingEmail: z.object({
                 enabled: z.boolean(),
                 provider: EmailProviderTypeSchema.optional(),
@@ -111,6 +112,9 @@ const configRoutes: FastifyPluginAsyncZod = async (fastify) => {
           bedrockIamAuthEnabled: isBedrockIamAuthEnabled(),
           geminiVertexAiEnabled: isVertexAiEnabled(),
           globalToolPolicy,
+          webhookPolicyExtensionConfigured: Boolean(
+            org?.webhookPolicyExtensionEndpointUrl,
+          ),
           incomingEmail: getEmailProviderInfo(),
           mcpServerBaseImage: config.orchestrator.mcpServerBaseImage,
           orchestratorK8sNamespace: config.orchestrator.kubernetes.namespace,

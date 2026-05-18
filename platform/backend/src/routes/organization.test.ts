@@ -4,6 +4,7 @@ import * as embeddingClients from "@/knowledge-base/embedding-clients";
 import LlmProviderApiKeyModel from "@/models/llm-provider-api-key";
 import LlmProviderApiKeyModelLinkModel from "@/models/llm-provider-api-key-model";
 import ModelModel from "@/models/model";
+import SecretModel from "@/models/secret";
 import ToolModel from "@/models/tool";
 import type { FastifyInstanceWithZod } from "@/server";
 import { createFastifyInstance } from "@/server";
@@ -393,6 +394,62 @@ describe("organization routes", () => {
         globalToolPolicy: "permissive",
         allowChatFileUploads: true,
       });
+    });
+
+    test("updates webhook policy extension settings", async () => {
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/organization/security-settings",
+        payload: {
+          webhookPolicyExtensionEndpointUrl: "https://policy.example.test/auth",
+          webhookPolicyExtensionSigningSecret: "test-signing-secret",
+          webhookPolicyExtensionTimeoutMs: 3000,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body).toMatchObject({
+        webhookPolicyExtensionEndpointUrl: "https://policy.example.test/auth",
+        webhookPolicyExtensionTimeoutMs: 3000,
+      });
+      expect(body.webhookPolicyExtensionSigningSecret).toBeUndefined();
+      expect(body.webhookPolicyExtensionSigningSecretId).toEqual(
+        expect.any(String),
+      );
+
+      const secret = await SecretModel.findById(
+        body.webhookPolicyExtensionSigningSecretId,
+      );
+      expect(secret?.secret).toEqual({
+        signingSecret: "test-signing-secret",
+      });
+    });
+
+    test("clears webhook policy extension signing secret", async () => {
+      const setResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/organization/security-settings",
+        payload: {
+          webhookPolicyExtensionEndpointUrl: "https://policy.example.test/auth",
+          webhookPolicyExtensionSigningSecret: "test-signing-secret",
+        },
+      });
+      const secretId = setResponse.json().webhookPolicyExtensionSigningSecretId;
+
+      const clearResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/organization/security-settings",
+        payload: {
+          webhookPolicyExtensionSigningSecret: null,
+        },
+      });
+
+      expect(clearResponse.statusCode).toBe(200);
+      expect(clearResponse.json().webhookPolicyExtensionSigningSecretId).toBe(
+        null,
+      );
+      expect(await SecretModel.findById(secretId)).toBeNull();
     });
   });
 

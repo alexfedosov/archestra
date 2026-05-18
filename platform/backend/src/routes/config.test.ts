@@ -1,3 +1,4 @@
+import OrganizationModel from "@/models/organization";
 import { createFastifyInstance, type FastifyInstanceWithZod } from "@/server";
 import { afterEach, beforeEach, describe, expect, test } from "@/test";
 import type { User } from "@/types";
@@ -73,6 +74,7 @@ describe("config routes", () => {
       azureOpenAiEntraIdEnabled: expect.any(Boolean),
       bedrockIamAuthEnabled: expect.any(Boolean),
       geminiVertexAiEnabled: expect.any(Boolean),
+      webhookPolicyExtensionConfigured: false,
       mcpServerBaseImage: expect.any(String),
       orchestratorK8sNamespace: expect.any(String),
       isQuickstart: expect.any(Boolean),
@@ -120,5 +122,21 @@ describe("config routes", () => {
     for (const value of Object.values(payload.providerBaseUrls)) {
       expect(value === null || typeof value === "string").toBe(true);
     }
+  });
+
+  test("reports webhook policy extensions as configured", async () => {
+    await OrganizationModel.patch(organizationId, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/auth",
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/config",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().features.webhookPolicyExtensionConfigured).toBe(
+      true,
+    );
   });
 });
