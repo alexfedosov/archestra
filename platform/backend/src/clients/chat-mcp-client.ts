@@ -18,6 +18,7 @@ import {
   parseFullToolName,
   TimeInMs,
   TOOL_INVOCATION_APPROVAL_REQUIRED_AUTONOMOUS_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
 } from "@shared";
 import { type JSONSchema7, jsonSchema, type Tool } from "ai";
 import { evaluateToolExecutionContextTrust } from "@/agents/context-trust";
@@ -1026,6 +1027,14 @@ export async function getChatMcpTools({
                       .join("\n");
                   }
 
+                  await throwIfWebhookPolicyExtensionRequired({
+                    toolName: mcpTool.name,
+                    args,
+                    agentId,
+                    globalToolPolicy,
+                    considerContextUntrusted,
+                  });
+
                   // Execute non-Archestra tools via shared helper with browser sync
                   return await executeMcpTool({
                     toolName: mcpTool.name,
@@ -1937,6 +1946,41 @@ async function throwIfApprovalRequired(
     );
   if (requiresApproval) {
     throw new Error(TOOL_INVOCATION_APPROVAL_REQUIRED_AUTONOMOUS_REASON);
+  }
+}
+
+async function throwIfWebhookPolicyExtensionRequired({
+  toolName,
+  args,
+  agentId,
+  globalToolPolicy,
+  considerContextUntrusted,
+}: {
+  toolName: string;
+  args: unknown;
+  agentId: string;
+  globalToolPolicy: GlobalToolPolicy;
+  considerContextUntrusted: boolean;
+}): Promise<void> {
+  const result = await ToolInvocationPolicyModel.evaluateBatch(
+    agentId,
+    [{ toolCallName: toolName, toolInput: isRecord(args) ? args : {} }],
+    {
+      teamIds: [],
+      externalAgentId: getChatExternalAgentId(),
+    },
+    !considerContextUntrusted,
+    globalToolPolicy,
+  );
+
+  if (!result.isAllowed) {
+    throw new Error(result.reason);
+  }
+
+  if (result.webhookPolicyExtensionChecks?.length) {
+    throw new Error(
+      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
+    );
   }
 }
 

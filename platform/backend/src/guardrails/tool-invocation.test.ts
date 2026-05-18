@@ -1,6 +1,7 @@
 import {
   getArchestraToolFullName,
   TOOL_INVOCATION_DISABLED_FOR_CONVERSATION_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
   TOOL_LIST_AGENTS_SHORT_NAME,
 } from "@shared";
 import { archestraMcpBranding } from "@/archestra-mcp-server";
@@ -345,6 +346,41 @@ describe("evaluatePolicies", () => {
 
     expect(result).not.toBeNull();
     expect(result?.blockedToolName).toBe("always_blocked_tool");
+  });
+
+  test("webhook extension policy fails closed before the evaluator is available", async ({
+    makeAgent,
+    makeTool,
+    makeAgentTool,
+    makeToolPolicy,
+  }) => {
+    const agent = await makeAgent();
+    const tool = await makeTool({ name: "webhook_guarded_tool" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+
+    const result = await evaluatePolicies(
+      [
+        {
+          toolCallName: "webhook_guarded_tool",
+          toolCallArgs: JSON.stringify({ id: "123" }),
+        },
+      ],
+      agent.id,
+      { teamIds: [] },
+      true,
+      new Set(["webhook_guarded_tool"]),
+      "restrictive",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.blockedToolName).toBe("webhook_guarded_tool");
+    expect(result?.reason).toBe(
+      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
+    );
   });
 
   test("conditional policy blocks when conditions match", async ({

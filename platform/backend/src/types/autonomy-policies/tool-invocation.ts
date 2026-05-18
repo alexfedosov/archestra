@@ -8,6 +8,7 @@ const ToolInvocationPolicyActionSchema = z.enum([
   "block_when_context_is_untrusted",
   "block_always",
   "require_approval",
+  "require_webhook_policy_extension_decision",
 ]);
 
 const CallPolicyConditionSchema = z.object({

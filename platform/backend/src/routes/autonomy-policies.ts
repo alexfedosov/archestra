@@ -290,6 +290,7 @@ const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
             "block_when_context_is_untrusted",
             "block_always",
             "require_approval",
+            "require_webhook_policy_extension_decision",
           ]),
         }),
         response: constructResponseSchema(
