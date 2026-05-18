@@ -12,7 +12,6 @@ import type {
 } from "@/models/tool-invocation-policy";
 import {
   type SecretValue,
-  type WebhookPolicyExtensionRequest,
   WebhookPolicyExtensionResponseSchema,
 } from "@/types";
 
@@ -185,7 +184,7 @@ async function evaluateOneWebhookPolicyExtensionCheck({
 function buildWebhookPolicyExtensionRequest(
   runtime: WebhookPolicyExtensionRuntimeContext,
   check: WebhookPolicyExtensionCheck,
-): WebhookPolicyExtensionRequest {
+) {
   return {
     organizationId: runtime.organizationId,
     agentId: runtime.agentId,
