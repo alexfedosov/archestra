@@ -1,7 +1,11 @@
 import { RouteId } from "@shared";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { ToolInvocationPolicyModel, TrustedDataPolicyModel } from "@/models";
+import {
+  OrganizationModel,
+  ToolInvocationPolicyModel,
+  TrustedDataPolicyModel,
+} from "@/models";
 import {
   ApiError,
   AutonomyPolicyOperator,
@@ -11,6 +15,10 @@ import {
   TrustedData,
   UuidIdSchema,
 } from "@/types";
+
+const ASK_WEBHOOK_ACTION = "require_webhook_policy_extension_decision";
+const ASK_WEBHOOK_REQUIRES_URL_MESSAGE =
+  "Configure a webhook URL in Settings > Agents to enable this option.";
 
 const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -80,7 +88,8 @@ const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         ),
       },
     },
-    async ({ body }, reply) => {
+    async ({ body, organizationId }, reply) => {
+      await assertWebhookPolicyExtensionConfigured(organizationId, body.action);
       return reply.send(await ToolInvocationPolicyModel.create(body));
     },
   );
@@ -127,7 +136,8 @@ const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         ),
       },
     },
-    async ({ params: { id }, body }, reply) => {
+    async ({ params: { id }, body, organizationId }, reply) => {
+      await assertWebhookPolicyExtensionConfigured(organizationId, body.action);
       const policy = await ToolInvocationPolicyModel.update(id, body);
 
       if (!policy) {
@@ -301,7 +311,8 @@ const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
         ),
       },
     },
-    async ({ body }, reply) => {
+    async ({ body, organizationId }, reply) => {
+      await assertWebhookPolicyExtensionConfigured(organizationId, body.action);
       const result = await ToolInvocationPolicyModel.bulkUpsertDefaultPolicy(
         body.toolIds,
         body.action,
@@ -344,5 +355,17 @@ const autonomyPolicyRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   );
 };
+
+async function assertWebhookPolicyExtensionConfigured(
+  organizationId: string,
+  action?: ToolInvocation.ToolInvocationPolicyAction,
+): Promise<void> {
+  if (action !== ASK_WEBHOOK_ACTION) return;
+
+  const organization = await OrganizationModel.getById(organizationId);
+  if (organization?.webhookPolicyExtensionEndpointUrl) return;
+
+  throw new ApiError(400, ASK_WEBHOOK_REQUIRES_URL_MESSAGE);
+}
 
 export default autonomyPolicyRoutes;

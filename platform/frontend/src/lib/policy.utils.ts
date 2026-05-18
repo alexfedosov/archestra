@@ -6,6 +6,11 @@ export type CallPolicyAction =
 export type ResultPolicyAction =
   archestraApiTypes.GetTrustedDataPoliciesResponses["200"][number]["action"];
 
+export const ASK_WEBHOOK_ACTION =
+  "require_webhook_policy_extension_decision" satisfies CallPolicyAction;
+export const ASK_WEBHOOK_REQUIRES_URL_MESSAGE =
+  "Configure a webhook URL in Settings > Agents to enable this option.";
+
 export const RESULT_POLICY_ACTION_OPTIONS: {
   value: ResultPolicyAction;
   label: string;
@@ -50,7 +55,8 @@ export function getCallPolicyActionFromPolicies(
       action === "allow_when_context_is_untrusted" ||
       action === "block_when_context_is_untrusted" ||
       action === "block_always" ||
-      action === "require_approval"
+      action === "require_approval" ||
+      action === "require_webhook_policy_extension_decision"
     ) {
       return action;
     }

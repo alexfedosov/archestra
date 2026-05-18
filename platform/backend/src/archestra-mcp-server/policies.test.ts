@@ -3,6 +3,7 @@ import {
   ARCHESTRA_MCP_SERVER_NAME,
   MCP_SERVER_TOOL_NAME_SEPARATOR,
 } from "@shared";
+import OrganizationModel from "@/models/organization";
 import { beforeEach, describe, expect, test } from "@/test";
 import type { Agent } from "@/types";
 import { type ArchestraContext, executeArchestraTool } from ".";
@@ -10,9 +11,11 @@ import { type ArchestraContext, executeArchestraTool } from ".";
 describe("policy tool execution", () => {
   let testAgent: Agent;
   let mockContext: ArchestraContext;
+  let organizationId: string;
 
   beforeEach(async ({ makeAgent, makeUser, makeOrganization, makeMember }) => {
     const org = await makeOrganization();
+    organizationId = org.id;
     const user = await makeUser();
     await makeMember(user.id, org.id, { role: "admin" });
     testAgent = await makeAgent({ name: "Test Agent", organizationId: org.id });
@@ -121,6 +124,48 @@ describe("policy tool execution", () => {
     });
     const fetched = JSON.parse((getResult.content[0] as any).text);
     expect(fetched.id).toBe(created.id);
+  });
+
+  test("create tool invocation policy rejects webhook extension decision action without endpoint", async ({
+    makeTool,
+  }) => {
+    const tool = await makeTool();
+    const result = await executeArchestraTool(
+      `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}create_tool_invocation_policy`,
+      {
+        toolId: tool.id,
+        conditions: [],
+        action: "require_webhook_policy_extension_decision",
+      },
+      mockContext,
+    );
+
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as any).text).toContain(
+      "Configure a webhook URL in Settings > Agents to enable this option.",
+    );
+  });
+
+  test("create tool invocation policy with webhook extension decision action", async ({
+    makeTool,
+  }) => {
+    await OrganizationModel.patch(organizationId, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/auth",
+    });
+    const tool = await makeTool();
+    const result = await executeArchestraTool(
+      `${ARCHESTRA_MCP_SERVER_NAME}${MCP_SERVER_TOOL_NAME_SEPARATOR}create_tool_invocation_policy`,
+      {
+        toolId: tool.id,
+        conditions: [],
+        action: "require_webhook_policy_extension_decision",
+      },
+      mockContext,
+    );
+
+    expect(result.isError).toBe(false);
+    const created = JSON.parse((result.content[0] as any).text);
+    expect(created.action).toBe("require_webhook_policy_extension_decision");
   });
 
   test("get_trusted_data_policies returns empty when none exist", async () => {

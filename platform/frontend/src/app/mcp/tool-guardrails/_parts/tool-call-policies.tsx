@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useFeature } from "@/lib/config/config.query";
 import { useUniqueExternalAgentIds } from "@/lib/interactions/interaction.query";
 import {
   useCallPolicyMutation,
@@ -29,6 +30,8 @@ import {
   useToolInvocationPolicyUpdateMutation,
 } from "@/lib/policy.query";
 import {
+  ASK_WEBHOOK_ACTION,
+  ASK_WEBHOOK_REQUIRES_URL_MESSAGE,
   type CallPolicyAction,
   getCallPolicyActionFromPolicies,
 } from "@/lib/policy.utils";
@@ -56,6 +59,8 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
   const callPolicyMutation = useCallPolicyMutation();
   const { data: externalAgentIds = [] } = useUniqueExternalAgentIds();
   const { data: teams } = useTeams();
+  const webhookPolicyExtensionConfigured =
+    useFeature("webhookPolicyExtensionConfigured") === true;
 
   const byProfileToolId = invocationPolicies?.byProfileToolId ?? {};
   const allPolicies = byProfileToolId[tool.id] || [];
@@ -122,6 +127,8 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
   };
 
   const handleActionChange = (action: CallPolicyAction) => {
+    if (action === ASK_WEBHOOK_ACTION && !webhookPolicyExtensionConfigured)
+      return;
     if (action === currentAction) return;
     callPolicyMutation.mutate({
       toolId: tool.id,
@@ -147,6 +154,7 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
           value={currentAction}
           onChange={handleActionChange}
           size="lg"
+          webhookPolicyExtensionConfigured={webhookPolicyExtensionConfigured}
         />
       </div>
       {policies.map((policy: (typeof allPolicies)[number]) => (
@@ -206,12 +214,18 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
                 defaultValue={policy.action}
                 onValueChange={(
                   value: archestraApiTypes.GetToolInvocationPoliciesResponses["200"][number]["action"],
-                ) =>
+                ) => {
+                  if (
+                    value === ASK_WEBHOOK_ACTION &&
+                    !webhookPolicyExtensionConfigured
+                  ) {
+                    return;
+                  }
                   toolInvocationPolicyUpdateMutation.mutate({
                     id: policy.id,
                     action: value,
-                  })
-                }
+                  });
+                }}
               >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Action" />
@@ -230,15 +244,27 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
                       value: "require_approval",
                       label: "Require approval",
                     },
+                    {
+                      value: "require_webhook_policy_extension_decision",
+                      label: "Ask webhook",
+                    },
                     { value: "block_always", label: "Block always" },
                   ].map(({ value, label }) => (
                     <SelectItem
                       key={label}
                       value={value}
+                      disabled={
+                        value === ASK_WEBHOOK_ACTION &&
+                        !webhookPolicyExtensionConfigured
+                      }
                       description={
                         value === "require_approval"
                           ? "Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked."
-                          : undefined
+                          : value === ASK_WEBHOOK_ACTION
+                            ? webhookPolicyExtensionConfigured
+                              ? "Calls the configured webhook policy extension and requires an allow decision before executing."
+                              : ASK_WEBHOOK_REQUIRES_URL_MESSAGE
+                            : undefined
                       }
                     >
                       {label}

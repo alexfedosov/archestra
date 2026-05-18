@@ -14,7 +14,11 @@ import {
 } from "@shared";
 import { z } from "zod";
 import logger from "@/logging";
-import { ToolInvocationPolicyModel, TrustedDataPolicyModel } from "@/models";
+import {
+  OrganizationModel,
+  ToolInvocationPolicyModel,
+  TrustedDataPolicyModel,
+} from "@/models";
 import {
   AutonomyPolicyOperator,
   ToolInvocation,
@@ -30,6 +34,10 @@ import {
   structuredSuccessResult,
 } from "./helpers";
 import type { ArchestraContext } from "./types";
+
+const ASK_WEBHOOK_ACTION = "require_webhook_policy_extension_decision";
+const ASK_WEBHOOK_REQUIRES_URL_MESSAGE =
+  "Configure a webhook URL in Settings > Agents to enable this option.";
 
 const ToolInvocationConditionSchema = z
   .object({
@@ -461,6 +469,15 @@ async function handleCreateToolInvocationPolicy(
       action: args.action,
       reason: args.reason ?? null,
     });
+    const webhookPolicyExtensionError =
+      await getWebhookPolicyExtensionConfigurationError(
+        context,
+        validated.action,
+      );
+    if (webhookPolicyExtensionError) {
+      return errorResult(webhookPolicyExtensionError);
+    }
+
     const policy = await ToolInvocationPolicyModel.create(validated);
     return structuredSuccessResult({ policy }, JSON.stringify(policy, null, 2));
   } catch (error) {
@@ -513,6 +530,14 @@ async function handleUpdateToolInvocationPolicy(
       ToolInvocation.InsertToolInvocationPolicySchema.partial().parse(
         rawUpdate,
       );
+    const webhookPolicyExtensionError =
+      await getWebhookPolicyExtensionConfigurationError(
+        context,
+        updateData.action,
+      );
+    if (webhookPolicyExtensionError) {
+      return errorResult(webhookPolicyExtensionError);
+    }
 
     const policy = await ToolInvocationPolicyModel.update(args.id, updateData);
     if (!policy) {
@@ -523,6 +548,22 @@ async function handleUpdateToolInvocationPolicy(
   } catch (error) {
     return catchError(error, "updating tool invocation policy");
   }
+}
+
+async function getWebhookPolicyExtensionConfigurationError(
+  context: ArchestraContext,
+  action?: ToolInvocation.ToolInvocationPolicyAction,
+): Promise<string | null> {
+  if (action !== ASK_WEBHOOK_ACTION) return null;
+
+  if (!context.organizationId) {
+    return ASK_WEBHOOK_REQUIRES_URL_MESSAGE;
+  }
+
+  const organization = await OrganizationModel.getById(context.organizationId);
+  return organization?.webhookPolicyExtensionEndpointUrl
+    ? null
+    : ASK_WEBHOOK_REQUIRES_URL_MESSAGE;
 }
 
 async function handleDeleteToolInvocationPolicy(
