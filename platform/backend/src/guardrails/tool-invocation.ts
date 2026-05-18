@@ -13,6 +13,7 @@ import {
 } from "@/models";
 import type { PolicyEvaluationContext } from "@/models/tool-invocation-policy";
 import type { GlobalToolPolicy } from "@/types";
+import { evaluateWebhookPolicyExtensionChecks } from "./webhook-policy-extension";
 
 /**
  * Result returned when tool invocation policies block a tool call.
@@ -27,6 +28,11 @@ export interface PolicyBlockResult {
   /** All tool call names in the batch (all are blocked when any one is) */
   allToolCallNames: string[];
 }
+
+type ToolInvocationRuntimeContext = {
+  organizationId?: string;
+  userId?: string | null;
+};
 
 /**
  * This method will evaluate whether, based on the tool invocation policies assigned to the specified agent,
@@ -49,6 +55,7 @@ export const evaluatePolicies = async (
   contextIsTrusted: boolean,
   enabledToolNames: Set<string>,
   globalToolPolicy: GlobalToolPolicy,
+  runtimeContext: ToolInvocationRuntimeContext = {},
 ): Promise<PolicyBlockResult | null> => {
   logger.debug(
     {
@@ -181,10 +188,32 @@ ${contentMessage}`;
 
   const webhookPolicyExtensionCheck = webhookPolicyExtensionChecks?.[0];
   if (webhookPolicyExtensionCheck) {
-    const { toolCallName, toolInput } = webhookPolicyExtensionCheck;
-    const reason =
-      evaluationReason ||
-      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON;
+    const webhookPolicyExtensionResult = runtimeContext.organizationId
+      ? await evaluateWebhookPolicyExtensionChecks({
+          organizationId: runtimeContext.organizationId,
+          agentId,
+          userId: runtimeContext.userId,
+          context,
+          contextIsTrusted,
+          checks: webhookPolicyExtensionChecks,
+        })
+      : {
+          allowed: false as const,
+          toolCallName: webhookPolicyExtensionCheck.toolCallName,
+          toolInput: webhookPolicyExtensionCheck.toolInput,
+          reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
+          errorCode: "missing_runtime_context",
+        };
+
+    if (webhookPolicyExtensionResult.allowed) {
+      logger.debug(
+        { agentId, toolCallCount: toolCalls.length },
+        "[toolInvocation] evaluatePolicies: webhook policy extension allowed tool calls",
+      );
+      return null;
+    }
+
+    const { toolCallName, toolInput, reason } = webhookPolicyExtensionResult;
     const archestraMetadata = buildArchestraToolRefusalMetadata({
       toolName: toolCallName,
       toolArguments: JSON.stringify(toolInput),
