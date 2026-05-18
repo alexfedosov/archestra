@@ -62,7 +62,6 @@ describe("evaluateWebhookPolicyExtensionChecks", () => {
       RequestInit & { headers: Headers; body: string },
     ];
     expect(JSON.parse(init.body)).toEqual({
-      version: 1,
       organizationId: organization.id,
       agentId: agent.id,
       userId: user.id,

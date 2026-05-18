@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-export const WEBHOOK_POLICY_EXTENSION_VERSION = 1;
-
 export const WebhookPolicyExtensionToolSchema = z.object({
   name: z.string(),
   arguments: z.record(z.string(), z.unknown()),
@@ -14,7 +12,6 @@ export const WebhookPolicyExtensionContextSchema = z.object({
 });
 
 export const WebhookPolicyExtensionRequestSchema = z.object({
-  version: z.literal(WEBHOOK_POLICY_EXTENSION_VERSION),
   organizationId: z.string(),
   agentId: z.string(),
   userId: z.string().nullable().optional(),
