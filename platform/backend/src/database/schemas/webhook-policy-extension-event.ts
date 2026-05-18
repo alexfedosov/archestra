@@ -26,7 +26,7 @@ const webhookPolicyExtensionEventsTable = pgTable(
       onDelete: "set null",
     }),
     toolName: varchar("tool_name", { length: 255 }).notNull(),
-    endpointUrl: text("endpoint_url").notNull(),
+    endpointUrl: text("endpoint_url"),
     decision: varchar("decision", { length: 16 })
       .$type<WebhookPolicyExtensionDecision>()
       .notNull(),

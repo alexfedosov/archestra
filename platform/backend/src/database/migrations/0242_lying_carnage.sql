@@ -4,7 +4,7 @@ CREATE TABLE "webhook_policy_extension_events" (
 	"agent_id" uuid,
 	"user_id" text,
 	"tool_name" varchar(255) NOT NULL,
-	"endpoint_url" text NOT NULL,
+	"endpoint_url" text,
 	"decision" varchar(16) NOT NULL,
 	"http_status" integer,
 	"reason" text,

@@ -45,6 +45,43 @@ import {
   UpdateSecuritySettingsSchema,
 } from "@/types";
 
+async function applyWebhookPolicyExtensionSigningSecretPatch({
+  currentOrganization,
+  patch,
+  signingSecret,
+}: {
+  currentOrganization: Organization;
+  patch: Partial<Organization>;
+  signingSecret: string | null | undefined;
+}) {
+  if (signingSecret === undefined) return;
+
+  const currentSecretId =
+    currentOrganization.webhookPolicyExtensionSigningSecretId;
+  const manager = secretManager();
+
+  if (signingSecret === null) {
+    if (currentSecretId) {
+      await manager.deleteSecret(currentSecretId);
+    }
+    patch.webhookPolicyExtensionSigningSecretId = null;
+    return;
+  }
+
+  if (currentSecretId) {
+    const updatedSecret = await manager.updateSecret(currentSecretId, {
+      signingSecret,
+    });
+    if (updatedSecret) return;
+  }
+
+  const secret = await manager.createSecret(
+    { signingSecret },
+    "webhook-policy-extension-signing-secret",
+  );
+  patch.webhookPolicyExtensionSigningSecretId = secret.id;
+}
+
 const organizationRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
     "/api/organization",
@@ -135,34 +172,11 @@ const organizationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const { webhookPolicyExtensionSigningSecret, ...securitySettings } = body;
       const patch: Partial<Organization> = { ...securitySettings };
 
-      if (webhookPolicyExtensionSigningSecret !== undefined) {
-        if (webhookPolicyExtensionSigningSecret === null) {
-          if (currentOrganization.webhookPolicyExtensionSigningSecretId) {
-            await secretManager().deleteSecret(
-              currentOrganization.webhookPolicyExtensionSigningSecretId,
-            );
-          }
-          patch.webhookPolicyExtensionSigningSecretId = null;
-        } else if (currentOrganization.webhookPolicyExtensionSigningSecretId) {
-          const updatedSecret = await secretManager().updateSecret(
-            currentOrganization.webhookPolicyExtensionSigningSecretId,
-            { signingSecret: webhookPolicyExtensionSigningSecret },
-          );
-          if (!updatedSecret) {
-            const secret = await secretManager().createSecret(
-              { signingSecret: webhookPolicyExtensionSigningSecret },
-              "webhook-policy-extension-signing-secret",
-            );
-            patch.webhookPolicyExtensionSigningSecretId = secret.id;
-          }
-        } else {
-          const secret = await secretManager().createSecret(
-            { signingSecret: webhookPolicyExtensionSigningSecret },
-            "webhook-policy-extension-signing-secret",
-          );
-          patch.webhookPolicyExtensionSigningSecretId = secret.id;
-        }
-      }
+      await applyWebhookPolicyExtensionSigningSecretPatch({
+        currentOrganization,
+        patch,
+        signingSecret: webhookPolicyExtensionSigningSecret,
+      });
 
       const organization = await OrganizationModel.patch(organizationId, patch);
 

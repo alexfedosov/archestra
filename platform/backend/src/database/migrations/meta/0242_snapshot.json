@@ -9665,7 +9665,7 @@
           "name": "endpoint_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "decision": {
           "name": "decision",

@@ -35,10 +35,6 @@ import {
 } from "./helpers";
 import type { ArchestraContext } from "./types";
 
-const ASK_WEBHOOK_ACTION = "require_webhook_policy_extension_decision";
-const ASK_WEBHOOK_REQUIRES_URL_MESSAGE =
-  "Configure a webhook URL in Settings > Agents to enable this option.";
-
 const ToolInvocationConditionSchema = z
   .object({
     key: z
@@ -470,7 +466,7 @@ async function handleCreateToolInvocationPolicy(
       reason: args.reason ?? null,
     });
     const webhookPolicyExtensionError =
-      await getWebhookPolicyExtensionConfigurationError(
+      await validateWebhookPolicyExtensionConfiguration(
         context,
         validated.action,
       );
@@ -531,7 +527,7 @@ async function handleUpdateToolInvocationPolicy(
         rawUpdate,
       );
     const webhookPolicyExtensionError =
-      await getWebhookPolicyExtensionConfigurationError(
+      await validateWebhookPolicyExtensionConfiguration(
         context,
         updateData.action,
       );
@@ -550,20 +546,24 @@ async function handleUpdateToolInvocationPolicy(
   }
 }
 
-async function getWebhookPolicyExtensionConfigurationError(
+async function validateWebhookPolicyExtensionConfiguration(
   context: ArchestraContext,
   action?: ToolInvocation.ToolInvocationPolicyAction,
 ): Promise<string | null> {
-  if (action !== ASK_WEBHOOK_ACTION) return null;
+  const askWebhookAction = "require_webhook_policy_extension_decision";
+  const requiresUrlMessage =
+    "Configure a webhook URL in Settings > Agents to enable this option.";
+
+  if (action !== askWebhookAction) return null;
 
   if (!context.organizationId) {
-    return ASK_WEBHOOK_REQUIRES_URL_MESSAGE;
+    return "Could not validate webhook policy extension configuration because the organization is missing from the tool context.";
   }
 
   const organization = await OrganizationModel.getById(context.organizationId);
   return organization?.webhookPolicyExtensionEndpointUrl
     ? null
-    : ASK_WEBHOOK_REQUIRES_URL_MESSAGE;
+    : requiresUrlMessage;
 }
 
 async function handleDeleteToolInvocationPolicy(

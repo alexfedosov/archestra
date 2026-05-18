@@ -1986,8 +1986,8 @@ async function throwIfWebhookPolicyExtensionRequired({
     throw new Error(result.reason);
   }
 
-  const checks = result.webhookPolicyExtensionChecks ?? [];
-  if (checks.length > 0) {
+  const checks = result.webhookPolicyExtensionChecks;
+  if (checks?.length) {
     const webhookPolicyExtensionResult =
       await evaluateWebhookPolicyExtensionChecks({
         organizationId,

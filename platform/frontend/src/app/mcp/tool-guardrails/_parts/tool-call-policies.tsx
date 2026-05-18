@@ -48,6 +48,25 @@ type ToolForPolicies = {
   parameters?: archestraApiTypes.GetToolsWithAssignmentsResponses["200"]["data"][number]["parameters"];
 };
 
+function getToolCallPolicyActionDescription(
+  action: string,
+  webhookPolicyExtensionConfigured: boolean,
+) {
+  if (action === "require_approval") {
+    return "Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked.";
+  }
+
+  if (action !== ASK_WEBHOOK_ACTION) {
+    return undefined;
+  }
+
+  if (!webhookPolicyExtensionConfigured) {
+    return ASK_WEBHOOK_REQUIRES_URL_MESSAGE;
+  }
+
+  return "Calls the configured webhook policy extension and requires an allow decision before executing.";
+}
+
 export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
   const { data: invocationPolicies } = useToolInvocationPolicies();
   const toolInvocationPolicyCreateMutation =
@@ -249,27 +268,26 @@ export function ToolCallPolicies({ tool }: { tool: ToolForPolicies }) {
                       label: "Ask webhook",
                     },
                     { value: "block_always", label: "Block always" },
-                  ].map(({ value, label }) => (
-                    <SelectItem
-                      key={label}
-                      value={value}
-                      disabled={
-                        value === ASK_WEBHOOK_ACTION &&
-                        !webhookPolicyExtensionConfigured
-                      }
-                      description={
-                        value === "require_approval"
-                          ? "Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked."
-                          : value === ASK_WEBHOOK_ACTION
-                            ? webhookPolicyExtensionConfigured
-                              ? "Calls the configured webhook policy extension and requires an allow decision before executing."
-                              : ASK_WEBHOOK_REQUIRES_URL_MESSAGE
-                            : undefined
-                      }
-                    >
-                      {label}
-                    </SelectItem>
-                  ))}
+                  ].map(({ value, label }) => {
+                    const webhookActionDisabled =
+                      value === ASK_WEBHOOK_ACTION &&
+                      !webhookPolicyExtensionConfigured;
+                    const description = getToolCallPolicyActionDescription(
+                      value,
+                      webhookPolicyExtensionConfigured,
+                    );
+
+                    return (
+                      <SelectItem
+                        key={label}
+                        value={value}
+                        disabled={webhookActionDisabled}
+                        description={description}
+                      >
+                        {label}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <DebouncedInput
