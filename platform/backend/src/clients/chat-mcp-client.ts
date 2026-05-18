@@ -30,6 +30,7 @@ import {
 import { CacheKey, LRUCacheManager } from "@/cache-manager";
 import mcpClient, { type TokenAuthContext } from "@/clients/mcp-client";
 import config from "@/config";
+import { evaluateWebhookPolicyExtensionChecks } from "@/guardrails/webhook-policy-extension";
 import logger from "@/logging";
 import {
   AgentModel,
@@ -215,6 +216,7 @@ export const __test = {
   filterToolsByEnabledIds,
   pingClientWithTimeout,
   throwIfApprovalRequired,
+  throwIfWebhookPolicyExtensionRequired,
 };
 
 /**
@@ -1025,6 +1027,16 @@ export async function getChatMcpTools({
                       )
                       .join("\n");
                   }
+
+                  await throwIfWebhookPolicyExtensionRequired({
+                    toolName: mcpTool.name,
+                    args,
+                    agentId,
+                    userId,
+                    organizationId,
+                    globalToolPolicy,
+                    considerContextUntrusted,
+                  });
 
                   // Execute non-Archestra tools via shared helper with browser sync
                   return await executeMcpTool({
@@ -1937,6 +1949,58 @@ async function throwIfApprovalRequired(
     );
   if (requiresApproval) {
     throw new Error(TOOL_INVOCATION_APPROVAL_REQUIRED_AUTONOMOUS_REASON);
+  }
+}
+
+async function throwIfWebhookPolicyExtensionRequired({
+  toolName,
+  args,
+  agentId,
+  userId,
+  organizationId,
+  globalToolPolicy,
+  considerContextUntrusted,
+}: {
+  toolName: string;
+  args: unknown;
+  agentId: string;
+  userId: string;
+  organizationId: string;
+  globalToolPolicy: GlobalToolPolicy;
+  considerContextUntrusted: boolean;
+}): Promise<void> {
+  const context = {
+    teamIds: [],
+    externalAgentId: getChatExternalAgentId(),
+  };
+  const contextIsTrusted = !considerContextUntrusted;
+  const result = await ToolInvocationPolicyModel.evaluateBatch(
+    agentId,
+    [{ toolCallName: toolName, toolInput: isRecord(args) ? args : {} }],
+    context,
+    contextIsTrusted,
+    globalToolPolicy,
+  );
+
+  if (!result.isAllowed) {
+    throw new Error(result.reason);
+  }
+
+  const checks = result.webhookPolicyExtensionChecks;
+  if (checks?.length) {
+    const webhookPolicyExtensionResult =
+      await evaluateWebhookPolicyExtensionChecks({
+        organizationId,
+        agentId,
+        userId,
+        context,
+        contextIsTrusted,
+        checks,
+      });
+
+    if (!webhookPolicyExtensionResult.allowed) {
+      throw new Error(webhookPolicyExtensionResult.reason);
+    }
   }
 }
 

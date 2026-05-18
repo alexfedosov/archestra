@@ -54,6 +54,7 @@ import {
   DEFAULT_TABLE_LIMIT,
 } from "@/consts";
 import { useAutoConfigurePolicies } from "@/lib/agent-tools.query";
+import { useFeature } from "@/lib/config/config.query";
 import { useDataTableQueryParams } from "@/lib/hooks/use-data-table-query-params";
 import { useInternalMcpCatalog } from "@/lib/mcp/internal-mcp-catalog.query";
 import {
@@ -65,6 +66,8 @@ import {
   useToolResultPolicies,
 } from "@/lib/policy.query";
 import {
+  ASK_WEBHOOK_ACTION,
+  ASK_WEBHOOK_REQUIRES_URL_MESSAGE,
   type CallPolicyAction,
   getCallPolicyActionFromPolicies,
   getResultPolicyActionFromPolicies,
@@ -121,6 +124,8 @@ export function AssignedToolsTable({
   const resultPolicyMutation = useResultPolicyMutation();
   const bulkCallPolicyMutation = useBulkCallPolicyMutation();
   const bulkResultPolicyMutation = useBulkResultPolicyMutation();
+  const webhookPolicyExtensionConfigured =
+    useFeature("webhookPolicyExtensionConfigured") === true;
   const autoConfigureMutation = useAutoConfigurePolicies();
   const { data: invocationPolicies } = useToolInvocationPolicies(
     initialData?.toolInvocationPolicies,
@@ -286,6 +291,14 @@ export function AssignedToolsTable({
       field: "callPolicy" | "resultPolicyAction",
       value: CallPolicyAction | ResultPolicyAction,
     ) => {
+      if (
+        field === "callPolicy" &&
+        value === ASK_WEBHOOK_ACTION &&
+        !webhookPolicyExtensionConfigured
+      ) {
+        return;
+      }
+
       // Filter out tools with custom policies (non-empty conditions)
       const toolIds = selectedTools
         .filter((tool) => {
@@ -332,6 +345,7 @@ export function AssignedToolsTable({
       bulkResultPolicyMutation,
       invocationPolicies,
       resultPolicies,
+      webhookPolicyExtensionConfigured,
     ],
   );
 
@@ -402,6 +416,14 @@ export function AssignedToolsTable({
       field: "callPolicy" | "resultPolicyAction",
       value: CallPolicyAction | ResultPolicyAction,
     ) => {
+      if (
+        field === "callPolicy" &&
+        value === ASK_WEBHOOK_ACTION &&
+        !webhookPolicyExtensionConfigured
+      ) {
+        return;
+      }
+
       setUpdatingRows((prev) => new Set(prev).add({ id: toolId, field }));
       try {
         if (field === "callPolicy") {
@@ -430,7 +452,11 @@ export function AssignedToolsTable({
         });
       }
     },
-    [callPolicyMutation, resultPolicyMutation],
+    [
+      callPolicyMutation,
+      resultPolicyMutation,
+      webhookPolicyExtensionConfigured,
+    ],
   );
 
   const columns: ColumnDef<ToolWithAssignmentsData>[] = useMemo(
@@ -659,6 +685,9 @@ export function AssignedToolsTable({
                     }
                     disabled={isUpdating || !hasPermission}
                     size="sm"
+                    webhookPolicyExtensionConfigured={
+                      webhookPolicyExtensionConfigured
+                    }
                   />
                   {isUpdating && (
                     <LoadingSpinner className="ml-1 h-3 w-3 text-muted-foreground" />
@@ -776,6 +805,7 @@ export function AssignedToolsTable({
       isRowFieldUpdating,
       handleSingleRowUpdate,
       onToolClick,
+      webhookPolicyExtensionConfigured,
     ],
   );
 
@@ -903,6 +933,12 @@ export function AssignedToolsTable({
                     disabled={!hasSelection || isBulkUpdating || !hasPermission}
                     value={bulkCallPolicyValue}
                     onValueChange={(value: CallPolicyAction) => {
+                      if (
+                        value === ASK_WEBHOOK_ACTION &&
+                        !webhookPolicyExtensionConfigured
+                      ) {
+                        return;
+                      }
                       setBulkCallPolicyValue(value);
                       handleBulkAction("callPolicy", value);
                     }}
@@ -922,6 +958,17 @@ export function AssignedToolsTable({
                         description="Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked."
                       >
                         Require approval
+                      </SelectItem>
+                      <SelectItem
+                        value="require_webhook_policy_extension_decision"
+                        disabled={!webhookPolicyExtensionConfigured}
+                        description={
+                          webhookPolicyExtensionConfigured
+                            ? "Calls the configured webhook policy extension and requires an allow decision before executing."
+                            : ASK_WEBHOOK_REQUIRES_URL_MESSAGE
+                        }
+                      >
+                        Ask webhook
                       </SelectItem>
                       <SelectItem value="block_always">Block always</SelectItem>
                     </SelectContent>
@@ -1037,6 +1084,12 @@ export function AssignedToolsTable({
                     disabled={!hasSelection || isBulkUpdating || !hasPermission}
                     value={bulkCallPolicyValue}
                     onValueChange={(value: CallPolicyAction) => {
+                      if (
+                        value === ASK_WEBHOOK_ACTION &&
+                        !webhookPolicyExtensionConfigured
+                      ) {
+                        return;
+                      }
                       setBulkCallPolicyValue(value);
                       handleBulkAction("callPolicy", value);
                     }}
@@ -1056,6 +1109,17 @@ export function AssignedToolsTable({
                         description="Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked."
                       >
                         Require approval
+                      </SelectItem>
+                      <SelectItem
+                        value="require_webhook_policy_extension_decision"
+                        disabled={!webhookPolicyExtensionConfigured}
+                        description={
+                          webhookPolicyExtensionConfigured
+                            ? "Calls the configured webhook policy extension and requires an allow decision before executing."
+                            : ASK_WEBHOOK_REQUIRES_URL_MESSAGE
+                        }
+                      >
+                        Ask webhook
                       </SelectItem>
                       <SelectItem value="block_always">Block always</SelectItem>
                     </SelectContent>

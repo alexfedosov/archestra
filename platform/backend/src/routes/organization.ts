@@ -26,11 +26,13 @@ import {
   UserModel,
   UserTokenModel,
 } from "@/models";
+import { secretManager } from "@/secrets-manager";
 import {
   ApiError,
   AppearanceSettingsSchema,
   CompleteOnboardingSchema,
   constructResponseSchema,
+  type Organization,
   SelectOrganizationSchema,
   UpdateAgentSettingsSchema,
   UpdateAppearanceSettingsSchema,
@@ -42,6 +44,43 @@ import {
   UpdatePresetEntityNameSchema,
   UpdateSecuritySettingsSchema,
 } from "@/types";
+
+async function applyWebhookPolicyExtensionSigningSecretPatch({
+  currentOrganization,
+  patch,
+  signingSecret,
+}: {
+  currentOrganization: Organization;
+  patch: Partial<Organization>;
+  signingSecret: string | null | undefined;
+}) {
+  if (signingSecret === undefined) return;
+
+  const currentSecretId =
+    currentOrganization.webhookPolicyExtensionSigningSecretId;
+  const manager = secretManager();
+
+  if (signingSecret === null) {
+    if (currentSecretId) {
+      await manager.deleteSecret(currentSecretId);
+    }
+    patch.webhookPolicyExtensionSigningSecretId = null;
+    return;
+  }
+
+  if (currentSecretId) {
+    const updatedSecret = await manager.updateSecret(currentSecretId, {
+      signingSecret,
+    });
+    if (updatedSecret) return;
+  }
+
+  const secret = await manager.createSecret(
+    { signingSecret },
+    "webhook-policy-extension-signing-secret",
+  );
+  patch.webhookPolicyExtensionSigningSecretId = secret.id;
+}
 
 const organizationRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.get(
@@ -124,7 +163,22 @@ const organizationRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async ({ organizationId, body }, reply) => {
-      const organization = await OrganizationModel.patch(organizationId, body);
+      const currentOrganization =
+        await OrganizationModel.getById(organizationId);
+      if (!currentOrganization) {
+        throw new ApiError(404, "Organization not found");
+      }
+
+      const { webhookPolicyExtensionSigningSecret, ...securitySettings } = body;
+      const patch: Partial<Organization> = { ...securitySettings };
+
+      await applyWebhookPolicyExtensionSigningSecretPatch({
+        currentOrganization,
+        patch,
+        signingSecret: webhookPolicyExtensionSigningSecret,
+      });
+
+      const organization = await OrganizationModel.patch(organizationId, patch);
 
       if (!organization) {
         throw new ApiError(404, "Organization not found");

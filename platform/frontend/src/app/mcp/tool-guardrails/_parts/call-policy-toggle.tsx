@@ -1,4 +1,4 @@
-import { Ban, Check, Handshake, ShieldQuestion } from "lucide-react";
+import { Ban, Check, Handshake, ShieldQuestion, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,10 +13,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { CallPolicyAction } from "@/lib/policy.utils";
+import {
+  ASK_WEBHOOK_ACTION,
+  ASK_WEBHOOK_REQUIRES_URL_MESSAGE,
+  type CallPolicyAction,
+} from "@/lib/policy.utils";
 
 const REQUIRE_APPROVAL_DESCRIPTION =
   "Requires user confirmation before executing in chat. In autonomous agent sessions (A2A, API, MS Teams, subagents), the tool call is blocked.";
+const WEBHOOK_POLICY_EXTENSION_DESCRIPTION =
+  "Calls the configured webhook policy extension and requires an allow decision before executing.";
 
 const CALL_POLICY_OPTIONS: { value: CallPolicyAction; label: string }[] = [
   { value: "allow_when_context_is_untrusted", label: "Allow always" },
@@ -25,6 +31,10 @@ const CALL_POLICY_OPTIONS: { value: CallPolicyAction; label: string }[] = [
     label: "Allow in safe context",
   },
   { value: "require_approval", label: "Require approval" },
+  {
+    value: "require_webhook_policy_extension_decision",
+    label: "Ask webhook",
+  },
   { value: "block_always", label: "Block always" },
 ];
 
@@ -32,6 +42,7 @@ interface CallPolicyToggleProps {
   value: CallPolicyAction;
   onChange: (action: CallPolicyAction) => void;
   disabled?: boolean;
+  webhookPolicyExtensionConfigured?: boolean;
   size?: "sm" | "lg";
 }
 
@@ -39,13 +50,21 @@ export function CallPolicyToggle({
   value,
   onChange,
   disabled,
+  webhookPolicyExtensionConfigured,
   size = "sm",
 }: CallPolicyToggleProps) {
+  const isWebhookPolicyExtensionUnavailable =
+    webhookPolicyExtensionConfigured !== true;
+
   if (size === "lg") {
     return (
       <Select
         value={value}
-        onValueChange={(val: CallPolicyAction) => onChange(val)}
+        onValueChange={(val: CallPolicyAction) => {
+          if (val === ASK_WEBHOOK_ACTION && isWebhookPolicyExtensionUnavailable)
+            return;
+          onChange(val);
+        }}
         disabled={disabled}
       >
         <SelectTrigger className="w-[220px]">
@@ -56,10 +75,18 @@ export function CallPolicyToggle({
             <SelectItem
               key={value}
               value={value}
+              disabled={
+                value === ASK_WEBHOOK_ACTION &&
+                isWebhookPolicyExtensionUnavailable
+              }
               description={
                 value === "require_approval"
                   ? REQUIRE_APPROVAL_DESCRIPTION
-                  : undefined
+                  : value === ASK_WEBHOOK_ACTION
+                    ? isWebhookPolicyExtensionUnavailable
+                      ? ASK_WEBHOOK_REQUIRES_URL_MESSAGE
+                      : WEBHOOK_POLICY_EXTENSION_DESCRIPTION
+                    : undefined
               }
             >
               {label}
@@ -140,6 +167,39 @@ export function CallPolicyToggle({
           <TooltipContent className="max-w-xs">
             <p className="font-medium">Require approval</p>
             <p className="text-xs opacity-80">{REQUIRE_APPROVAL_DESCRIPTION}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <TooltipProvider delayDuration={100}>
+        <Tooltip disableHoverableContent>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Button
+                size="sm"
+                variant="ghost"
+                className={getButtonClassName(ASK_WEBHOOK_ACTION)}
+                disabled={disabled || isWebhookPolicyExtensionUnavailable}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (
+                    value !== ASK_WEBHOOK_ACTION &&
+                    !isWebhookPolicyExtensionUnavailable
+                  ) {
+                    onChange(ASK_WEBHOOK_ACTION);
+                  }
+                }}
+              >
+                <Webhook className="h-3.5 w-3.5" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="font-medium">Ask webhook</p>
+            <p className="text-xs opacity-80">
+              {isWebhookPolicyExtensionUnavailable
+                ? ASK_WEBHOOK_REQUIRES_URL_MESSAGE
+                : WEBHOOK_POLICY_EXTENSION_DESCRIPTION}
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

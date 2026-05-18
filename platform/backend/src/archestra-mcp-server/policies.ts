@@ -14,7 +14,11 @@ import {
 } from "@shared";
 import { z } from "zod";
 import logger from "@/logging";
-import { ToolInvocationPolicyModel, TrustedDataPolicyModel } from "@/models";
+import {
+  OrganizationModel,
+  ToolInvocationPolicyModel,
+  TrustedDataPolicyModel,
+} from "@/models";
 import {
   AutonomyPolicyOperator,
   ToolInvocation,
@@ -461,6 +465,15 @@ async function handleCreateToolInvocationPolicy(
       action: args.action,
       reason: args.reason ?? null,
     });
+    const webhookPolicyExtensionError =
+      await validateWebhookPolicyExtensionConfiguration(
+        context,
+        validated.action,
+      );
+    if (webhookPolicyExtensionError) {
+      return errorResult(webhookPolicyExtensionError);
+    }
+
     const policy = await ToolInvocationPolicyModel.create(validated);
     return structuredSuccessResult({ policy }, JSON.stringify(policy, null, 2));
   } catch (error) {
@@ -513,6 +526,14 @@ async function handleUpdateToolInvocationPolicy(
       ToolInvocation.InsertToolInvocationPolicySchema.partial().parse(
         rawUpdate,
       );
+    const webhookPolicyExtensionError =
+      await validateWebhookPolicyExtensionConfiguration(
+        context,
+        updateData.action,
+      );
+    if (webhookPolicyExtensionError) {
+      return errorResult(webhookPolicyExtensionError);
+    }
 
     const policy = await ToolInvocationPolicyModel.update(args.id, updateData);
     if (!policy) {
@@ -523,6 +544,26 @@ async function handleUpdateToolInvocationPolicy(
   } catch (error) {
     return catchError(error, "updating tool invocation policy");
   }
+}
+
+async function validateWebhookPolicyExtensionConfiguration(
+  context: ArchestraContext,
+  action?: ToolInvocation.ToolInvocationPolicyAction,
+): Promise<string | null> {
+  const askWebhookAction = "require_webhook_policy_extension_decision";
+  const requiresUrlMessage =
+    "Configure a webhook URL in Settings > Agents to enable this option.";
+
+  if (action !== askWebhookAction) return null;
+
+  if (!context.organizationId) {
+    return "Could not validate webhook policy extension configuration because the organization is missing from the tool context.";
+  }
+
+  const organization = await OrganizationModel.getById(context.organizationId);
+  return organization?.webhookPolicyExtensionEndpointUrl
+    ? null
+    : requiresUrlMessage;
 }
 
 async function handleDeleteToolInvocationPolicy(

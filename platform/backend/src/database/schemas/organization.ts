@@ -22,6 +22,7 @@ import type {
   OrganizationChatLink,
   OrganizationCompressionScope,
 } from "@/types";
+import secretsTable from "./secret";
 
 const organizationsTable = pgTable("organization", {
   id: text("id").primaryKey(),
@@ -59,6 +60,17 @@ const organizationsTable = pgTable("organization", {
   allowChatFileUploads: boolean("allow_chat_file_uploads")
     .notNull()
     .default(true),
+  webhookPolicyExtensionEndpointUrl: text(
+    "webhook_policy_extension_endpoint_url",
+  ),
+  webhookPolicyExtensionSigningSecretId: uuid(
+    "webhook_policy_extension_signing_secret_id",
+  ).references(() => secretsTable.id, { onDelete: "set null" }),
+  webhookPolicyExtensionTimeoutMs: integer(
+    "webhook_policy_extension_timeout_ms",
+  )
+    .notNull()
+    .default(2500),
 
   /** Embedding model for knowledge base RAG — set explicitly when user configures embedding */
   embeddingModel: text("embedding_model"),

@@ -15030,7 +15030,7 @@ export type GetToolInvocationPoliciesResponses = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -15047,7 +15047,7 @@ export type CreateToolInvocationPolicyData = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason?: string | null;
     };
     path?: never;
@@ -15132,7 +15132,7 @@ export type CreateToolInvocationPolicyResponses = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -15312,7 +15312,7 @@ export type GetToolInvocationPolicyResponses = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -15329,7 +15329,7 @@ export type UpdateToolInvocationPolicyData = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action?: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action?: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason?: string | null;
     };
     path: {
@@ -15416,7 +15416,7 @@ export type UpdateToolInvocationPolicyResponses = {
             operator: 'equal' | 'notEqual' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'regex';
             value: string;
         }>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
         reason: string | null;
         createdAt: string;
         updatedAt: string;
@@ -15907,7 +15907,7 @@ export type UpdateTrustedDataPolicyResponse = UpdateTrustedDataPolicyResponses[k
 export type BulkUpsertDefaultCallPolicyData = {
     body: {
         toolIds: Array<string>;
-        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval';
+        action: 'allow_when_context_is_untrusted' | 'block_when_context_is_untrusted' | 'block_always' | 'require_approval' | 'require_webhook_policy_extension_decision';
     };
     path?: never;
     query?: never;
@@ -22019,6 +22019,7 @@ export type GetConfigResponses = {
             bedrockIamAuthEnabled: boolean;
             geminiVertexAiEnabled: boolean;
             globalToolPolicy: 'permissive' | 'restrictive';
+            webhookPolicyExtensionConfigured: boolean;
             incomingEmail: {
                 enabled: boolean;
                 provider?: 'outlook';
@@ -41904,6 +41905,9 @@ export type GetOrganizationResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42181,6 +42185,9 @@ export type UpdateAppearanceSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42239,6 +42246,9 @@ export type UpdateSecuritySettingsData = {
     body: {
         globalToolPolicy?: 'permissive' | 'restrictive';
         allowChatFileUploads?: boolean;
+        webhookPolicyExtensionEndpointUrl?: string | null;
+        webhookPolicyExtensionSigningSecret?: string | null;
+        webhookPolicyExtensionTimeoutMs?: number;
     };
     path?: never;
     query?: never;
@@ -42329,6 +42339,9 @@ export type UpdateSecuritySettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42480,6 +42493,9 @@ export type UpdateLlmSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42630,6 +42646,9 @@ export type UpdateAgentSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42787,6 +42806,9 @@ export type UpdateConnectionSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -42935,6 +42957,9 @@ export type UpdatePresetEntityNameResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -43230,6 +43255,9 @@ export type UpdateAuthSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -43380,6 +43408,9 @@ export type UpdateKnowledgeSettingsResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -43525,6 +43556,9 @@ export type DropEmbeddingConfigResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;
@@ -43759,6 +43793,9 @@ export type CompleteOnboardingResponses = {
         compressionScope: 'organization' | 'team';
         globalToolPolicy: 'permissive' | 'restrictive';
         allowChatFileUploads: boolean;
+        webhookPolicyExtensionEndpointUrl: string | null;
+        webhookPolicyExtensionSigningSecretId: string | null;
+        webhookPolicyExtensionTimeoutMs: number;
         embeddingModel: string | null;
         embeddingDimensions: EmbeddingDimensions | null;
         embeddingChatApiKeyId: string | null;

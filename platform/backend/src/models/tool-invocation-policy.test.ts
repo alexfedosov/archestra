@@ -1,6 +1,7 @@
 import {
   getArchestraToolFullName,
   TOOL_GET_AGENT_SHORT_NAME,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
   TOOL_WHOAMI_SHORT_NAME,
 } from "@shared";
 import { describe, expect, test } from "@/test";
@@ -1482,6 +1483,86 @@ describe("ToolInvocationPolicyModel", () => {
         expect(result.reason).toBe("");
       });
     });
+
+    describe("require_webhook_policy_extension_decision action in evaluateBatch", () => {
+      test("returns webhook extension checks for a default policy", async ({
+        makeAgent,
+        makeTool,
+        makeAgentTool,
+        makeToolPolicy,
+      }) => {
+        const agent = await makeAgent();
+        const tool = await makeTool({
+          agentId: agent.id,
+          name: "webhook-policy-tool",
+        });
+        await makeAgentTool(agent.id, tool.id);
+        await ToolInvocationPolicyModel.deleteByToolId(tool.id);
+
+        await makeToolPolicy(tool.id, {
+          conditions: [],
+          action: "require_webhook_policy_extension_decision",
+          reason: "Webhook policy extension required",
+        });
+
+        const toolInput = { action: "read" };
+        const result = await ToolInvocationPolicyModel.evaluateBatch(
+          agent.id,
+          [{ toolCallName: "webhook-policy-tool", toolInput }],
+          mockContext,
+          false,
+          "restrictive",
+        );
+
+        expect(result.isAllowed).toBe(true);
+        expect(result.reason).toBe(
+          TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
+        );
+        expect(result.webhookPolicyExtensionChecks).toEqual([
+          { toolCallName: "webhook-policy-tool", toolInput },
+        ]);
+      });
+
+      test("uses a matching webhook extension policy instead of the default policy", async ({
+        makeAgent,
+        makeTool,
+        makeAgentTool,
+        makeToolPolicy,
+      }) => {
+        const agent = await makeAgent();
+        const tool = await makeTool({
+          agentId: agent.id,
+          name: "specific-webhook-policy-tool",
+        });
+        await makeAgentTool(agent.id, tool.id);
+        await ToolInvocationPolicyModel.deleteByToolId(tool.id);
+
+        await makeToolPolicy(tool.id, {
+          conditions: [{ key: "operation", operator: "equal", value: "sync" }],
+          action: "require_webhook_policy_extension_decision",
+          reason: "Webhook policy extension required",
+        });
+        await makeToolPolicy(tool.id, {
+          conditions: [],
+          action: "block_always",
+          reason: "Default block should not apply",
+        });
+
+        const toolInput = { operation: "sync" };
+        const result = await ToolInvocationPolicyModel.evaluateBatch(
+          agent.id,
+          [{ toolCallName: "specific-webhook-policy-tool", toolInput }],
+          mockContext,
+          false,
+          "restrictive",
+        );
+
+        expect(result.isAllowed).toBe(true);
+        expect(result.webhookPolicyExtensionChecks).toEqual([
+          { toolCallName: "specific-webhook-policy-tool", toolInput },
+        ]);
+      });
+    });
   });
 
   describe("checkApprovalRequired", () => {
@@ -1537,6 +1618,36 @@ describe("ToolInvocationPolicyModel", () => {
 
       const result = await ToolInvocationPolicyModel.checkApprovalRequired(
         "allowed-chat-tool",
+        { arg: "value" },
+        mockContext,
+        "restrictive",
+      );
+
+      expect(result).toBe(false);
+    });
+
+    test("returns false when default policy requires webhook extension", async ({
+      makeAgent,
+      makeTool,
+      makeAgentTool,
+      makeToolPolicy,
+    }) => {
+      const agent = await makeAgent();
+      const tool = await makeTool({
+        agentId: agent.id,
+        name: "webhook-approval-tool",
+      });
+      await makeAgentTool(agent.id, tool.id);
+      await ToolInvocationPolicyModel.deleteByToolId(tool.id);
+
+      await makeToolPolicy(tool.id, {
+        conditions: [],
+        action: "require_webhook_policy_extension_decision",
+        reason: "Webhook policy extension required",
+      });
+
+      const result = await ToolInvocationPolicyModel.checkApprovalRequired(
+        "webhook-approval-tool",
         { arg: "value" },
         mockContext,
         "restrictive",
@@ -1801,6 +1912,23 @@ describe("ToolInvocationPolicyModel", () => {
 
       const result = await ToolInvocationPolicyModel.hasBlockingPolicy(
         "approval-tool",
+        true,
+      );
+      expect(result).toBe(true);
+    });
+
+    test("returns true for tool with require_webhook_policy_extension_decision policy", async ({
+      makeTool,
+      makeToolPolicy,
+    }) => {
+      const tool = await makeTool({ name: "webhook-blocking-policy-tool" });
+      await makeToolPolicy(tool.id, {
+        conditions: [],
+        action: "require_webhook_policy_extension_decision",
+      });
+
+      const result = await ToolInvocationPolicyModel.hasBlockingPolicy(
+        "webhook-blocking-policy-tool",
         true,
       );
       expect(result).toBe(true);

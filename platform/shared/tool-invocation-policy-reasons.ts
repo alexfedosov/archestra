@@ -23,6 +23,17 @@ export const TOOL_INVOCATION_UNTRUSTED_CONTEXT_REASON =
 export const TOOL_INVOCATION_NO_POLICY_UNTRUSTED_REASON =
   buildToolInvocationBlockedReason("forbidden in sensitive context by default");
 
+export const TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON =
+  buildToolInvocationBlockedReason("webhook policy extension is not available");
+
+export const TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON =
+  buildToolInvocationBlockedReason("webhook policy extension denied tool call");
+
+export const TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON =
+  buildToolInvocationBlockedReason(
+    "webhook policy extension could not evaluate tool call",
+  );
+
 const CURRENT_SENSITIVE_CONTEXT_POLICY_DENIAL_REASONS = new Set([
   TOOL_INVOCATION_UNTRUSTED_CONTEXT_REASON,
   TOOL_INVOCATION_NO_POLICY_UNTRUSTED_REASON,

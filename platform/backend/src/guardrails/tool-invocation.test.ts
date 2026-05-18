@@ -1,8 +1,11 @@
 import {
   getArchestraToolFullName,
   TOOL_INVOCATION_DISABLED_FOR_CONVERSATION_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
   TOOL_LIST_AGENTS_SHORT_NAME,
 } from "@shared";
+import { vi } from "vitest";
 import { archestraMcpBranding } from "@/archestra-mcp-server";
 import { AgentTeamModel, OrganizationModel } from "@/models";
 import { describe, expect, test } from "@/test";
@@ -345,6 +348,131 @@ describe("evaluatePolicies", () => {
 
     expect(result).not.toBeNull();
     expect(result?.blockedToolName).toBe("always_blocked_tool");
+  });
+
+  test("webhook extension policy fails closed before the evaluator is available", async ({
+    makeAgent,
+    makeTool,
+    makeAgentTool,
+    makeToolPolicy,
+  }) => {
+    const agent = await makeAgent();
+    const tool = await makeTool({ name: "webhook_guarded_tool" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+
+    const result = await evaluatePolicies(
+      [
+        {
+          toolCallName: "webhook_guarded_tool",
+          toolCallArgs: JSON.stringify({ id: "123" }),
+        },
+      ],
+      agent.id,
+      { teamIds: [] },
+      true,
+      new Set(["webhook_guarded_tool"]),
+      "restrictive",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.blockedToolName).toBe("webhook_guarded_tool");
+    expect(result?.reason).toBe(
+      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
+    );
+  });
+
+  test("allows tool when webhook extension policy allows", async ({
+    makeAgent,
+    makeOrganization,
+    makeTool,
+    makeAgentTool,
+    makeToolPolicy,
+  }) => {
+    const organization = await makeOrganization();
+    const agent = await makeAgent({ organizationId: organization.id });
+    const tool = await makeTool({ name: "webhook_allowed_tool" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+    await OrganizationModel.patch(organization.id, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/decide",
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ allow: true }), { status: 200 }),
+      );
+
+    const result = await evaluatePolicies(
+      [
+        {
+          toolCallName: "webhook_allowed_tool",
+          toolCallArgs: JSON.stringify({ id: "123" }),
+        },
+      ],
+      agent.id,
+      { teamIds: [] },
+      true,
+      new Set(["webhook_allowed_tool"]),
+      "restrictive",
+      { organizationId: organization.id },
+    );
+
+    expect(result).toBeNull();
+    fetchMock.mockRestore();
+  });
+
+  test("blocks tool when webhook extension policy denies", async ({
+    makeAgent,
+    makeOrganization,
+    makeTool,
+    makeAgentTool,
+    makeToolPolicy,
+  }) => {
+    const organization = await makeOrganization();
+    const agent = await makeAgent({ organizationId: organization.id });
+    const tool = await makeTool({ name: "webhook_denied_tool" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+    await OrganizationModel.patch(organization.id, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/decide",
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ allow: false }), { status: 200 }),
+      );
+
+    const result = await evaluatePolicies(
+      [
+        {
+          toolCallName: "webhook_denied_tool",
+          toolCallArgs: JSON.stringify({ id: "123" }),
+        },
+      ],
+      agent.id,
+      { teamIds: [] },
+      true,
+      new Set(["webhook_denied_tool"]),
+      "restrictive",
+      { organizationId: organization.id },
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.blockedToolName).toBe("webhook_denied_tool");
+    expect(result?.reason).toBe(
+      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON,
+    );
+    fetchMock.mockRestore();
   });
 
   test("conditional policy blocks when conditions match", async ({

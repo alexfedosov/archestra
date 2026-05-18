@@ -17,6 +17,7 @@ import {
   SettingsSectionStack,
 } from "@/components/settings/settings-block";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Select,
@@ -69,6 +70,16 @@ export default function AgentSettingsPage() {
   const [defaultAgentId, setDefaultAgentId] = useState<string>("");
   const [toolPolicy, setToolPolicy] = useState<GlobalToolPolicy>("permissive");
   const [fileUploads, setFileUploads] = useState<FileUploadsEnabled>("enabled");
+  const [
+    webhookPolicyExtensionEndpointUrl,
+    setWebhookPolicyExtensionEndpointUrl,
+  ] = useState("");
+  const [
+    webhookPolicyExtensionSigningSecret,
+    setWebhookPolicyExtensionSigningSecret,
+  ] = useState("");
+  const [webhookPolicyExtensionTimeoutMs, setWebhookPolicyExtensionTimeoutMs] =
+    useState(2500);
   const initializedRef = useRef(false);
   const savedStateRef = useRef<AgentSettingsState>({
     selectedApiKeyId: "",
@@ -78,6 +89,8 @@ export default function AgentSettingsPage() {
   const savedSecurityStateRef = useRef({
     toolPolicy: "permissive" as GlobalToolPolicy,
     fileUploads: "enabled" as FileUploadsEnabled,
+    webhookPolicyExtensionEndpointUrl: "",
+    webhookPolicyExtensionTimeoutMs: 2500,
   });
 
   const { data: allModels, isPending: modelsLoading } = useLlmModels({
@@ -105,11 +118,22 @@ export default function AgentSettingsPage() {
     setFileUploads(
       (organization.allowChatFileUploads ?? true) ? "enabled" : "disabled",
     );
+    setWebhookPolicyExtensionEndpointUrl(
+      organization.webhookPolicyExtensionEndpointUrl ?? "",
+    );
+    setWebhookPolicyExtensionSigningSecret("");
+    setWebhookPolicyExtensionTimeoutMs(
+      organization.webhookPolicyExtensionTimeoutMs ?? 2500,
+    );
     savedStateRef.current = state;
     savedSecurityStateRef.current = {
       toolPolicy: organization.globalToolPolicy ?? "permissive",
       fileUploads:
         (organization.allowChatFileUploads ?? true) ? "enabled" : "disabled",
+      webhookPolicyExtensionEndpointUrl:
+        organization.webhookPolicyExtensionEndpointUrl ?? "",
+      webhookPolicyExtensionTimeoutMs:
+        organization.webhookPolicyExtensionTimeoutMs ?? 2500,
     };
     initializedRef.current = true;
   }, [organization, apiKeys]);
@@ -125,7 +149,12 @@ export default function AgentSettingsPage() {
   const changes = detectChanges(localState, savedStateRef.current);
   const securityHasChanges =
     toolPolicy !== savedSecurityStateRef.current.toolPolicy ||
-    fileUploads !== savedSecurityStateRef.current.fileUploads;
+    fileUploads !== savedSecurityStateRef.current.fileUploads ||
+    webhookPolicyExtensionEndpointUrl !==
+      savedSecurityStateRef.current.webhookPolicyExtensionEndpointUrl ||
+    webhookPolicyExtensionSigningSecret.length > 0 ||
+    webhookPolicyExtensionTimeoutMs !==
+      savedSecurityStateRef.current.webhookPolicyExtensionTimeoutMs;
 
   const handleSave = async () => {
     if (!apiKeys) return;
@@ -144,8 +173,23 @@ export default function AgentSettingsPage() {
       await updateSecurityMutation.mutateAsync({
         globalToolPolicy: toolPolicy,
         allowChatFileUploads: fileUploads === "enabled",
+        webhookPolicyExtensionEndpointUrl:
+          webhookPolicyExtensionEndpointUrl.trim() || null,
+        ...(webhookPolicyExtensionSigningSecret.length > 0
+          ? {
+              webhookPolicyExtensionSigningSecret:
+                webhookPolicyExtensionSigningSecret,
+            }
+          : {}),
+        webhookPolicyExtensionTimeoutMs,
       });
-      savedSecurityStateRef.current = { toolPolicy, fileUploads };
+      savedSecurityStateRef.current = {
+        toolPolicy,
+        fileUploads,
+        webhookPolicyExtensionEndpointUrl,
+        webhookPolicyExtensionTimeoutMs,
+      };
+      setWebhookPolicyExtensionSigningSecret("");
     }
 
     initializedRef.current = false;
@@ -158,6 +202,13 @@ export default function AgentSettingsPage() {
     setDefaultAgentId(saved.defaultAgentId);
     setToolPolicy(savedSecurityStateRef.current.toolPolicy);
     setFileUploads(savedSecurityStateRef.current.fileUploads);
+    setWebhookPolicyExtensionEndpointUrl(
+      savedSecurityStateRef.current.webhookPolicyExtensionEndpointUrl,
+    );
+    setWebhookPolicyExtensionSigningSecret("");
+    setWebhookPolicyExtensionTimeoutMs(
+      savedSecurityStateRef.current.webhookPolicyExtensionTimeoutMs,
+    );
   };
 
   const modelItems = useMemo(() => {
@@ -215,6 +266,10 @@ export default function AgentSettingsPage() {
   }, []);
 
   const isRestrictive = toolPolicy === "restrictive";
+  const webhookPolicyExtensionTimeoutIsValid =
+    Number.isFinite(webhookPolicyExtensionTimeoutMs) &&
+    webhookPolicyExtensionTimeoutMs >= 250 &&
+    webhookPolicyExtensionTimeoutMs <= 10_000;
   const isSaving =
     updateAgentMutation.isPending || updateSecurityMutation.isPending;
 
@@ -407,9 +462,68 @@ export default function AgentSettingsPage() {
           </span>
         }
       />
+      <SettingsBlock
+        title="Webhook Policy Extensions"
+        description="Configure the HTTP endpoint used by Ask webhook tool call policies."
+        control={
+          <WithPermissions
+            permissions={{ agentSettings: ["update"] }}
+            noPermissionHandle="tooltip"
+          >
+            {({ hasPermission }) => (
+              <div className="flex flex-col gap-3 w-80">
+                <Input
+                  value={webhookPolicyExtensionEndpointUrl}
+                  onChange={(event) =>
+                    setWebhookPolicyExtensionEndpointUrl(event.target.value)
+                  }
+                  placeholder="https://example.com/policy"
+                  disabled={isSaving || !hasPermission}
+                />
+                <Input
+                  type="password"
+                  value={webhookPolicyExtensionSigningSecret}
+                  onChange={(event) =>
+                    setWebhookPolicyExtensionSigningSecret(event.target.value)
+                  }
+                  placeholder={
+                    organization?.webhookPolicyExtensionSigningSecretId
+                      ? "Signing secret configured"
+                      : "Optional signing secret"
+                  }
+                  disabled={isSaving || !hasPermission}
+                />
+                <Input
+                  type="number"
+                  min={250}
+                  max={10_000}
+                  step={250}
+                  value={webhookPolicyExtensionTimeoutMs}
+                  onChange={(event) =>
+                    setWebhookPolicyExtensionTimeoutMs(
+                      Number(event.target.value),
+                    )
+                  }
+                  disabled={isSaving || !hasPermission}
+                />
+              </div>
+            )}
+          </WithPermissions>
+        }
+        notice={
+          !isRestrictive ? (
+            <span className="text-muted-foreground">
+              Ask webhook policies run when Agentic Security Engine is enabled.
+            </span>
+          ) : undefined
+        }
+      />
       <SettingsSaveBar
         hasChanges={changes.hasChanges || securityHasChanges}
-        disabledSave={selectedApiKeyId !== "" && defaultModel === ""}
+        disabledSave={
+          (selectedApiKeyId !== "" && defaultModel === "") ||
+          !webhookPolicyExtensionTimeoutIsValid
+        }
         isSaving={isSaving}
         permissions={{ agentSettings: ["update"] }}
         onSave={handleSave}

@@ -5,6 +5,7 @@ import {
   TOOL_INVOCATION_BLOCK_ALWAYS_REASON,
   TOOL_INVOCATION_NO_POLICY_UNTRUSTED_REASON,
   TOOL_INVOCATION_UNTRUSTED_CONTEXT_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
 } from "@shared";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { get } from "lodash-es";
@@ -17,9 +18,16 @@ import type {
   ToolInvocation,
 } from "@/types";
 
+export type WebhookPolicyExtensionCheck = {
+  toolCallName: string;
+  toolInput: Record<string, unknown>;
+};
+
 type EvaluationResult = {
   isAllowed: boolean;
   reason: string;
+  toolCallName?: string;
+  webhookPolicyExtensionChecks?: WebhookPolicyExtensionCheck[];
 };
 
 export type PolicyEvaluationContext = {
@@ -155,11 +163,7 @@ class ToolInvocationPolicyModel {
    */
   static async bulkUpsertDefaultPolicy(
     toolIds: string[],
-    action:
-      | "allow_when_context_is_untrusted"
-      | "block_when_context_is_untrusted"
-      | "block_always"
-      | "require_approval",
+    action: ToolInvocation.ToolInvocationPolicyAction,
   ): Promise<{ updated: number; created: number }> {
     if (toolIds.length === 0) {
       return { updated: 0, created: 0 };
@@ -415,7 +419,7 @@ class ToolInvocationPolicyModel {
     context: PolicyEvaluationContext,
     isContextTrusted: boolean,
     globalToolPolicy: GlobalToolPolicy,
-  ): Promise<EvaluationResult & { toolCallName?: string }> {
+  ): Promise<EvaluationResult> {
     logger.debug(
       { globalToolPolicy },
       "ToolInvocationPolicy.evaluateBatch: global policy",
@@ -478,6 +482,8 @@ class ToolInvocationPolicyModel {
       policiesByToolId.set(policy.toolId, existing);
     }
 
+    const webhookPolicyExtensionChecks: WebhookPolicyExtensionCheck[] = [];
+
     // Evaluate each tool call
     for (const { toolCallName, toolInput } of externalToolCalls) {
       const toolId = toolIdsByName.get(toolCallName);
@@ -492,6 +498,7 @@ class ToolInvocationPolicyModel {
       // First, check specific policies (more specific rules take precedence)
       let hasMatchingSpecificPolicy = false;
       let specificAllowsUntrusted = false;
+      let specificRequiresWebhookPolicyExtension = false;
 
       for (const policy of specificPolicies) {
         // Check if all conditions match (AND logic)
@@ -546,6 +553,11 @@ class ToolInvocationPolicyModel {
         ) {
           specificAllowsUntrusted = true;
         }
+
+        if (policy.action === "require_webhook_policy_extension_decision") {
+          specificAllowsUntrusted = true;
+          specificRequiresWebhookPolicyExtension = true;
+        }
       }
 
       // If a specific policy matched, use its result (ignore default policies)
@@ -557,12 +569,16 @@ class ToolInvocationPolicyModel {
             toolCallName,
           };
         }
+        if (specificRequiresWebhookPolicyExtension) {
+          webhookPolicyExtensionChecks.push({ toolCallName, toolInput });
+        }
         continue; // Tool is allowed, move to next tool
       }
 
       if (defaultPolicies.length > 0) {
         // No specific policy matched - fall back to default policy (empty conditions)
         let defaultAllowsUntrusted = false;
+        let defaultRequiresWebhookPolicyExtension = false;
 
         for (const policy of defaultPolicies) {
           if (policy.action === "block_always") {
@@ -592,6 +608,11 @@ class ToolInvocationPolicyModel {
           ) {
             defaultAllowsUntrusted = true;
           }
+
+          if (policy.action === "require_webhook_policy_extension_decision") {
+            defaultAllowsUntrusted = true;
+            defaultRequiresWebhookPolicyExtension = true;
+          }
         }
         // Check if tool is allowed when context is untrusted
         if (!isContextTrusted && !defaultAllowsUntrusted) {
@@ -600,6 +621,9 @@ class ToolInvocationPolicyModel {
             reason: TOOL_INVOCATION_UNTRUSTED_CONTEXT_REASON,
             toolCallName,
           };
+        }
+        if (defaultRequiresWebhookPolicyExtension) {
+          webhookPolicyExtensionChecks.push({ toolCallName, toolInput });
         }
         continue; // Tool is allowed by default policy, skip global policy check
       }
@@ -614,7 +638,17 @@ class ToolInvocationPolicyModel {
       }
     }
 
-    return { isAllowed: true, reason: "" };
+    return {
+      isAllowed: true,
+      reason:
+        webhookPolicyExtensionChecks.length > 0
+          ? TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON
+          : "",
+      webhookPolicyExtensionChecks:
+        webhookPolicyExtensionChecks.length > 0
+          ? webhookPolicyExtensionChecks
+          : undefined,
+    };
   }
 
   /**
@@ -628,11 +662,16 @@ class ToolInvocationPolicyModel {
   ): Promise<boolean> {
     const blockingActions: ToolInvocation.ToolInvocationPolicyAction[] =
       contextIsTrusted
-        ? ["block_always", "require_approval"]
+        ? [
+            "block_always",
+            "require_approval",
+            "require_webhook_policy_extension_decision",
+          ]
         : [
             "block_always",
             "require_approval",
             "block_when_context_is_untrusted",
+            "require_webhook_policy_extension_decision",
           ];
     const result = await db
       .select({ id: schema.toolInvocationPoliciesTable.id })
