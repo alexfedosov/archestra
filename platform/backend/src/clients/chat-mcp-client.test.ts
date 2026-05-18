@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import {
   getArchestraToolFullName,
   TOOL_INVOCATION_APPROVAL_REQUIRED_AUTONOMOUS_REASON,
+  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON,
   TOOL_QUERY_KNOWLEDGE_SOURCES_FULL_NAME,
   TOOL_QUERY_KNOWLEDGE_SOURCES_SHORT_NAME,
   TOOL_WHOAMI_SHORT_NAME,
@@ -10,7 +11,7 @@ import {
 import { jsonSchema, type Tool } from "ai";
 import { beforeEach, vi } from "vitest";
 import { archestraMcpBranding } from "@/archestra-mcp-server";
-import { TeamTokenModel } from "@/models";
+import { OrganizationModel, TeamTokenModel } from "@/models";
 import ToolModel from "@/models/tool";
 import { resolveSessionExternalIdpToken } from "@/services/identity-providers/session-token";
 import { describe, expect, test } from "@/test";
@@ -1473,5 +1474,116 @@ describe("throwIfApprovalRequired", () => {
     await expect(
       throwIfApprovalRequired("nonexistent-tool", {}, "restrictive"),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("throwIfWebhookPolicyExtensionRequired", () => {
+  const { throwIfWebhookPolicyExtensionRequired } = chatClient.__test;
+
+  test("does not call webhook in permissive mode", async ({
+    makeAgent,
+    makeOrganization,
+  }) => {
+    const organization = await makeOrganization();
+    const agent = await makeAgent({ organizationId: organization.id });
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      throwIfWebhookPolicyExtensionRequired({
+        toolName: "some-tool",
+        args: {},
+        agentId: agent.id,
+        userId: "user-id",
+        organizationId: organization.id,
+        globalToolPolicy: "permissive",
+        considerContextUntrusted: false,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+  });
+
+  test("allows when webhook policy extension allows", async ({
+    makeAgent,
+    makeAgentTool,
+    makeOrganization,
+    makeTool,
+    makeToolPolicy,
+    makeUser,
+  }) => {
+    const organization = await makeOrganization();
+    const agent = await makeAgent({ organizationId: organization.id });
+    const user = await makeUser();
+    const tool = await makeTool({ agentId: agent.id, name: "direct-webhook" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+    await OrganizationModel.patch(organization.id, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/decide",
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ allow: true }), { status: 200 }),
+      );
+
+    await expect(
+      throwIfWebhookPolicyExtensionRequired({
+        toolName: "direct-webhook",
+        args: { id: "123" },
+        agentId: agent.id,
+        userId: user.id,
+        organizationId: organization.id,
+        globalToolPolicy: "restrictive",
+        considerContextUntrusted: false,
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockRestore();
+  });
+
+  test("throws when webhook policy extension denies", async ({
+    makeAgent,
+    makeAgentTool,
+    makeOrganization,
+    makeTool,
+    makeToolPolicy,
+    makeUser,
+  }) => {
+    const organization = await makeOrganization();
+    const agent = await makeAgent({ organizationId: organization.id });
+    const user = await makeUser();
+    const tool = await makeTool({ agentId: agent.id, name: "direct-denied" });
+    await makeAgentTool(agent.id, tool.id);
+    await makeToolPolicy(tool.id, {
+      conditions: [],
+      action: "require_webhook_policy_extension_decision",
+    });
+    await OrganizationModel.patch(organization.id, {
+      webhookPolicyExtensionEndpointUrl: "https://policy.example.test/decide",
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ allow: false }), { status: 200 }),
+      );
+
+    await expect(
+      throwIfWebhookPolicyExtensionRequired({
+        toolName: "direct-denied",
+        args: { id: "123" },
+        agentId: agent.id,
+        userId: user.id,
+        organizationId: organization.id,
+        globalToolPolicy: "restrictive",
+        considerContextUntrusted: false,
+      }),
+    ).rejects.toThrow(TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON);
+
+    fetchMock.mockRestore();
   });
 });

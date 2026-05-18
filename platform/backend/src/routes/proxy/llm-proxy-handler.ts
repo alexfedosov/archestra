@@ -1094,6 +1094,10 @@ async function handleStreaming<
         contextIsTrusted,
         enabledToolNames,
         globalToolPolicy,
+        {
+          organizationId: agent.organizationId,
+          userId: resolvedUser?.id ?? userId,
+        },
       );
 
       logger.info(
@@ -1376,6 +1380,10 @@ async function handleNonStreaming<
       contextIsTrusted,
       enabledToolNames,
       globalToolPolicy,
+      {
+        organizationId: agent.organizationId,
+        userId: resolvedUser?.id ?? userId,
+      },
     );
 
     if (toolInvocationRefusal) {

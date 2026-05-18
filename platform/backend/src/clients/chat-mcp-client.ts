@@ -18,7 +18,6 @@ import {
   parseFullToolName,
   TimeInMs,
   TOOL_INVOCATION_APPROVAL_REQUIRED_AUTONOMOUS_REASON,
-  TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
 } from "@shared";
 import { type JSONSchema7, jsonSchema, type Tool } from "ai";
 import { evaluateToolExecutionContextTrust } from "@/agents/context-trust";
@@ -31,6 +30,7 @@ import {
 import { CacheKey, LRUCacheManager } from "@/cache-manager";
 import mcpClient, { type TokenAuthContext } from "@/clients/mcp-client";
 import config from "@/config";
+import { evaluateWebhookPolicyExtensionChecks } from "@/guardrails/webhook-policy-extension";
 import logger from "@/logging";
 import {
   AgentModel,
@@ -216,6 +216,7 @@ export const __test = {
   filterToolsByEnabledIds,
   pingClientWithTimeout,
   throwIfApprovalRequired,
+  throwIfWebhookPolicyExtensionRequired,
 };
 
 /**
@@ -1031,6 +1032,8 @@ export async function getChatMcpTools({
                     toolName: mcpTool.name,
                     args,
                     agentId,
+                    userId,
+                    organizationId,
                     globalToolPolicy,
                     considerContextUntrusted,
                   });
@@ -1953,23 +1956,29 @@ async function throwIfWebhookPolicyExtensionRequired({
   toolName,
   args,
   agentId,
+  userId,
+  organizationId,
   globalToolPolicy,
   considerContextUntrusted,
 }: {
   toolName: string;
   args: unknown;
   agentId: string;
+  userId: string;
+  organizationId: string;
   globalToolPolicy: GlobalToolPolicy;
   considerContextUntrusted: boolean;
 }): Promise<void> {
+  const context = {
+    teamIds: [],
+    externalAgentId: getChatExternalAgentId(),
+  };
+  const contextIsTrusted = !considerContextUntrusted;
   const result = await ToolInvocationPolicyModel.evaluateBatch(
     agentId,
     [{ toolCallName: toolName, toolInput: isRecord(args) ? args : {} }],
-    {
-      teamIds: [],
-      externalAgentId: getChatExternalAgentId(),
-    },
-    !considerContextUntrusted,
+    context,
+    contextIsTrusted,
     globalToolPolicy,
   );
 
@@ -1977,10 +1986,21 @@ async function throwIfWebhookPolicyExtensionRequired({
     throw new Error(result.reason);
   }
 
-  if (result.webhookPolicyExtensionChecks?.length) {
-    throw new Error(
-      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
-    );
+  const checks = result.webhookPolicyExtensionChecks ?? [];
+  if (checks.length > 0) {
+    const webhookPolicyExtensionResult =
+      await evaluateWebhookPolicyExtensionChecks({
+        organizationId,
+        agentId,
+        userId,
+        context,
+        contextIsTrusted,
+        checks,
+      });
+
+    if (!webhookPolicyExtensionResult.allowed) {
+      throw new Error(webhookPolicyExtensionResult.reason);
+    }
   }
 }
 
