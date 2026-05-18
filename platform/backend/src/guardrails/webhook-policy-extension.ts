@@ -80,13 +80,14 @@ export async function evaluateWebhookPolicyExtensionChecks({
     };
   }
 
+  const endpointUrl = organization.webhookPolicyExtensionEndpointUrl;
   const signingSecret = organization.webhookPolicyExtensionSigningSecretId
     ? await getSigningSecret(organization.webhookPolicyExtensionSigningSecretId)
     : null;
 
   for (const check of checks) {
     const result = await evaluateOneWebhookPolicyExtensionCheck({
-      endpointUrl: organization.webhookPolicyExtensionEndpointUrl,
+      endpointUrl,
       timeoutMs: organization.webhookPolicyExtensionTimeoutMs,
       signingSecret,
       runtime: { organizationId, agentId, userId, context, contextIsTrusted },
