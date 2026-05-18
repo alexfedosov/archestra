@@ -64,4 +64,3 @@ export * from "./user-token";
 export * from "./virtual-api-key";
 export * from "./visibility";
 export * from "./webhook-policy-extension";
-export * from "./webhook-policy-extension-event";

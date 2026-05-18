@@ -4,15 +4,13 @@ import {
   TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
   TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
 } from "@shared";
-import { eq } from "drizzle-orm";
 import { vi } from "vitest";
-import db, { schema } from "@/database";
 import OrganizationModel from "@/models/organization";
 import { describe, expect, test } from "@/test";
 import { evaluateWebhookPolicyExtensionChecks } from "./webhook-policy-extension";
 
 describe("evaluateWebhookPolicyExtensionChecks", () => {
-  test("allows when the webhook returns allow true and records the decision", async ({
+  test("allows when the webhook returns allow true", async ({
     makeAgent,
     makeOrganization,
     makeSecret,
@@ -82,21 +80,6 @@ describe("evaluateWebhookPolicyExtensionChecks", () => {
       `sha256=${createHmac("sha256", "webhook-secret").update(init.body).digest("hex")}`,
     );
 
-    const [event] = await db
-      .select()
-      .from(schema.webhookPolicyExtensionEventsTable)
-      .where(
-        eq(
-          schema.webhookPolicyExtensionEventsTable.organizationId,
-          organization.id,
-        ),
-      );
-    expect(event.decision).toBe("allow");
-    expect(event.toolName).toBe("github__create_issue");
-    expect(event.endpointUrl).toBe("https://policy.example.test/decide");
-    expect(event.httpStatus).toBe(200);
-    expect(event.reason).toBe("approved");
-
     fetchMock.mockRestore();
   });
 
@@ -135,21 +118,6 @@ describe("evaluateWebhookPolicyExtensionChecks", () => {
       httpStatus: 200,
     });
 
-    const [event] = await db
-      .select()
-      .from(schema.webhookPolicyExtensionEventsTable)
-      .where(
-        eq(
-          schema.webhookPolicyExtensionEventsTable.organizationId,
-          organization.id,
-        ),
-      );
-    expect(event.decision).toBe("deny");
-    expect(event.endpointUrl).toBe("https://policy.example.test/decide");
-    expect(event.reason).toBe(
-      TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON,
-    );
-
     fetchMock.mockRestore();
   });
 
@@ -177,19 +145,6 @@ describe("evaluateWebhookPolicyExtensionChecks", () => {
       errorCode: "not_configured",
     });
     expect(fetchMock).not.toHaveBeenCalled();
-
-    const [event] = await db
-      .select()
-      .from(schema.webhookPolicyExtensionEventsTable)
-      .where(
-        eq(
-          schema.webhookPolicyExtensionEventsTable.organizationId,
-          organization.id,
-        ),
-      );
-    expect(event.decision).toBe("error");
-    expect(event.endpointUrl).toBeNull();
-    expect(event.errorCode).toBe("not_configured");
 
     fetchMock.mockRestore();
   });
@@ -223,19 +178,6 @@ describe("evaluateWebhookPolicyExtensionChecks", () => {
       errorCode: "http_status",
       httpStatus: 503,
     });
-
-    const [event] = await db
-      .select()
-      .from(schema.webhookPolicyExtensionEventsTable)
-      .where(
-        eq(
-          schema.webhookPolicyExtensionEventsTable.organizationId,
-          organization.id,
-        ),
-      );
-    expect(event.decision).toBe("error");
-    expect(event.endpointUrl).toBe("https://policy.example.test/decide");
-    expect(event.errorCode).toBe("http_status");
 
     fetchMock.mockRestore();
   });

@@ -62,4 +62,3 @@ export { default as UserModel } from "./user";
 export { default as UserTokenModel } from "./user-token";
 export { default as VerificationModel } from "./verification";
 export { default as VirtualApiKeyModel } from "./virtual-api-key";
-export { default as WebhookPolicyExtensionEventModel } from "./webhook-policy-extension-event";

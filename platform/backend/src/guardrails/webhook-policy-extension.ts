@@ -4,14 +4,12 @@ import {
   TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
   TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
 } from "@shared";
-import logger from "@/logging";
 import OrganizationModel from "@/models/organization";
 import SecretModel from "@/models/secret";
 import type {
   PolicyEvaluationContext,
   WebhookPolicyExtensionCheck,
 } from "@/models/tool-invocation-policy";
-import WebhookPolicyExtensionEventModel from "@/models/webhook-policy-extension-event";
 import {
   type SecretValue,
   WEBHOOK_POLICY_EXTENSION_VERSION,
@@ -59,19 +57,6 @@ export async function evaluateWebhookPolicyExtensionChecks({
 
   if (!organization || !organization.webhookPolicyExtensionEndpointUrl) {
     const firstCheck = checks[0];
-    if (organization) {
-      await recordWebhookPolicyExtensionEvent({
-        organizationId,
-        agentId,
-        userId,
-        toolName: firstCheck.toolCallName,
-        endpointUrl: null,
-        decision: "error",
-        reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_UNAVAILABLE_REASON,
-        errorCode: "not_configured",
-        durationMs: 0,
-      });
-    }
     return {
       allowed: false,
       toolCallName: firstCheck.toolCallName,
@@ -116,7 +101,6 @@ async function evaluateOneWebhookPolicyExtensionCheck({
   runtime: WebhookPolicyExtensionRuntimeContext;
   check: WebhookPolicyExtensionCheck;
 }): Promise<WebhookPolicyExtensionEvaluationResult> {
-  const startedAt = Date.now();
   const requestBody = JSON.stringify(
     buildWebhookPolicyExtensionRequest(runtime, check),
   );
@@ -125,18 +109,6 @@ async function evaluateOneWebhookPolicyExtensionCheck({
     Buffer.byteLength(requestBody, "utf8") >
     MAX_WEBHOOK_POLICY_EXTENSION_REQUEST_BYTES
   ) {
-    const durationMs = Date.now() - startedAt;
-    await recordWebhookPolicyExtensionEvent({
-      organizationId: runtime.organizationId,
-      agentId: runtime.agentId,
-      userId: runtime.userId,
-      toolName: check.toolCallName,
-      endpointUrl,
-      decision: "error",
-      reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
-      errorCode: "request_too_large",
-      durationMs,
-    });
     return {
       allowed: false,
       toolCallName: check.toolCallName,
@@ -154,21 +126,8 @@ async function evaluateOneWebhookPolicyExtensionCheck({
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const durationMs = Date.now() - startedAt;
 
     if (!response.ok) {
-      await recordWebhookPolicyExtensionEvent({
-        organizationId: runtime.organizationId,
-        agentId: runtime.agentId,
-        userId: runtime.userId,
-        toolName: check.toolCallName,
-        endpointUrl,
-        decision: "error",
-        httpStatus: response.status,
-        reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
-        errorCode: "http_status",
-        durationMs,
-      });
       return {
         allowed: false,
         toolCallName: check.toolCallName,
@@ -185,18 +144,6 @@ async function evaluateOneWebhookPolicyExtensionCheck({
     );
 
     if (!parsedResponse.success) {
-      await recordWebhookPolicyExtensionEvent({
-        organizationId: runtime.organizationId,
-        agentId: runtime.agentId,
-        userId: runtime.userId,
-        toolName: check.toolCallName,
-        endpointUrl,
-        decision: "error",
-        httpStatus: response.status,
-        reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
-        errorCode: "invalid_response",
-        durationMs,
-      });
       return {
         allowed: false,
         toolCallName: check.toolCallName,
@@ -211,17 +158,6 @@ async function evaluateOneWebhookPolicyExtensionCheck({
       const reason =
         parsedResponse.data.reason ||
         TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_DENIED_REASON;
-      await recordWebhookPolicyExtensionEvent({
-        organizationId: runtime.organizationId,
-        agentId: runtime.agentId,
-        userId: runtime.userId,
-        toolName: check.toolCallName,
-        endpointUrl,
-        decision: "deny",
-        httpStatus: response.status,
-        reason,
-        durationMs,
-      });
       return {
         allowed: false,
         toolCallName: check.toolCallName,
@@ -231,36 +167,12 @@ async function evaluateOneWebhookPolicyExtensionCheck({
       };
     }
 
-    await recordWebhookPolicyExtensionEvent({
-      organizationId: runtime.organizationId,
-      agentId: runtime.agentId,
-      userId: runtime.userId,
-      toolName: check.toolCallName,
-      endpointUrl,
-      decision: "allow",
-      httpStatus: response.status,
-      reason: parsedResponse.data.reason,
-      durationMs,
-    });
-
     return { allowed: true };
   } catch (error) {
-    const durationMs = Date.now() - startedAt;
     const errorCode =
       error instanceof Error && error.name === "TimeoutError"
         ? "timeout"
         : "request_failed";
-    await recordWebhookPolicyExtensionEvent({
-      organizationId: runtime.organizationId,
-      agentId: runtime.agentId,
-      userId: runtime.userId,
-      toolName: check.toolCallName,
-      endpointUrl,
-      decision: "error",
-      reason: TOOL_INVOCATION_WEBHOOK_POLICY_EXTENSION_ERROR_REASON,
-      errorCode,
-      durationMs,
-    });
     return {
       allowed: false,
       toolCallName: check.toolCallName,
@@ -337,17 +249,4 @@ async function getSigningSecret(secretId: string): Promise<string | null> {
 function readSigningSecret(secret: SecretValue): string | null {
   const value = secret.signingSecret;
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-async function recordWebhookPolicyExtensionEvent(
-  data: Parameters<typeof WebhookPolicyExtensionEventModel.create>[0],
-): Promise<void> {
-  try {
-    await WebhookPolicyExtensionEventModel.create(data);
-  } catch (error) {
-    logger.warn(
-      { error, organizationId: data.organizationId, toolName: data.toolName },
-      "Failed to record webhook policy extension event",
-    );
-  }
 }
